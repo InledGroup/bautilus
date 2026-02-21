@@ -175,6 +175,23 @@
         </div>
     </div>
 
+    <div id="video-overlay" class="preview-overlay hidden">
+        <div class="preview-popup video-popup">
+            <div class="popup-header">
+                <span id="video-title" class="popup-title">Vídeo</span>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-video-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
+                    <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="viewer-content video-content">
+                <div class="video-wrapper">
+                    <video id="video-player" playsinline controls></video>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

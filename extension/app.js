@@ -257,6 +257,7 @@ function getAdwaitaIcon(f) {
     if (e === '.pdf') return 'icons/adwaita/file-pdf.svg';
     if (['.jpg','.png','.gif','.svg','.webp'].includes(e)) return 'icons/adwaita/file-image.svg';
     if (['.mp3','.wav','.ogg','.m4a'].includes(e)) return 'icons/adwaita/file-audio.svg';
+    if (['.mp4','.webm','.ogv','.mov','.mkv'].includes(e)) return 'icons/adwaita/file-video.svg';
     if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(e)) return 'icons/adwaita/file-archive.svg';
     if (['.html','.js','.css','.json','.ts'].includes(e)) return 'icons/adwaita/file-code.svg';
     return 'icons/adwaita/file-text.svg';
@@ -393,6 +394,15 @@ function setupGlobalEvents() {
                     audio.src = '';
                 }
             }
+            if (overlay.id === 'video-overlay' && plyrPlayer) {
+                plyrPlayer.stop();
+                plyrPlayer.destroy();
+                plyrPlayer = null;
+                const video = document.getElementById('video-player');
+                if (video) {
+                    video.src = '';
+                }
+            }
             if (overlay.id === 'pdf-overlay') {
                 const container = document.getElementById('pdf-container');
                 const iframe = container.querySelector('iframe');
@@ -479,6 +489,8 @@ function handleFileOpen(file) {
         };
     } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
         openAudio(file, url);
+    } else if (['mp4', 'webm', 'ogv', 'mov', 'mkv'].includes(ext)) {
+        openVideo(file, url);
     } else if (ext === 'pdf') {
         openPdf(file, url);
     } else if (ext === 'zip') {
@@ -591,6 +603,29 @@ async function openAudio(file, url) {
     plyrPlayer = new Plyr(audio, {
         controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume'],
         keyboard: { focused: true, global: true }
+    });
+    
+    plyrPlayer.play();
+}
+
+async function openVideo(file, url) {
+    const overlay = document.getElementById('video-overlay');
+    overlay.classList.remove('hidden');
+    document.getElementById('video-title').textContent = file.name;
+    document.getElementById('btn-video-tab').onclick = () => window.open(url, '_blank');
+    
+    const video = document.getElementById('video-player');
+    video.src = url;
+    
+    if (plyrPlayer) {
+        plyrPlayer.destroy();
+    }
+    
+    // Create new Plyr instance
+    plyrPlayer = new Plyr(video, {
+        controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'],
+        keyboard: { focused: true, global: true },
+        tooltips: { controls: true, seek: true }
     });
     
     plyrPlayer.play();
