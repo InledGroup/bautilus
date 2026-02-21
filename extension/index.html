@@ -63,6 +63,7 @@
             <div id="bottom-bar" class="bottom-bar hidden">
                 <span id="selected-file-name" class="selected-label"></span>
                 <button id="bar-open" title="Abrir"><i data-lucide="external-link"></i></button>
+                <button id="bar-open-with" title="Abrir con..."><i data-lucide="layout-grid"></i></button>
                 <div class="bar-divider"></div>
                 <button id="bar-copy" title="Copiar"><i data-lucide="copy"></i></button>
                 <button id="bar-cut" title="Cortar"><i data-lucide="scissors"></i></button>
@@ -187,6 +188,26 @@
             <div class="viewer-content video-content">
                 <div class="video-wrapper">
                     <video id="video-player" playsinline controls></video>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OPEN WITH MODAL -->
+    <div id="open-with-modal" class="preview-overlay hidden">
+        <div class="preview-popup modal-dialog" style="width: 400px;">
+            <div class="popup-header">
+                <span class="popup-title">Abrir con...</span>
+                <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+            </div>
+            <div style="padding: 20px;">
+                <p id="open-with-filename" style="margin-bottom: 15px; font-size: 13px; color: var(--text-muted);">Selecciona una aplicación</p>
+                <div id="app-list" class="app-list">
+                    <!-- App items will be injected here -->
+                </div>
+                <div style="margin-top: 20px; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="always-open-check">
+                    <label for="always-open-check" style="font-size: 13px;">Usar siempre esta aplicación para archivos <span id="open-with-ext"></span></label>
                 </div>
             </div>
         </div>

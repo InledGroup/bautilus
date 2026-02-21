@@ -21,6 +21,28 @@ let pdfDoc = null;
 let pdfScale = 1.3;
 let pdfObserver = null;
 
+// --- OPEN WITH CONFIG ---
+const INTERNAL_VIEWERS = {
+    'image': { name: 'Visor de Imágenes', icon: 'image', exts: ['.jpg','.png','.gif','.webp','.svg'], action: (f,u) => openImage(f,u) },
+    'video': { name: 'Reproductor de Vídeo', icon: 'film', exts: ['.mp4','.webm','.ogv','.mov','.mkv'], action: (f,u) => openVideo(f,u) },
+    'audio': { name: 'Reproductor de Música', icon: 'music', exts: ['.mp3','.wav','.ogg','.m4a'], action: (f,u) => openAudio(f,u) },
+    'pdf': { name: 'Visor PDF', icon: 'file-text', exts: ['.pdf'], action: (f,u) => openPdf(f,u) },
+    'zip': { name: 'Explorador ZIP', icon: 'folder-archive', exts: ['.zip'], action: (f,u) => openZip(f,u) },
+    'code': { name: 'Editor de Código', icon: 'code', exts: ['.js','.json','.html','.css','.ts','.py','.md','.txt'], action: (f,u) => openEditor(f,u) }
+};
+
+async function getPreferences() {
+    return new Promise(resolve => {
+        chrome.storage.local.get(['openWithPrefs'], (r) => resolve(r.openWithPrefs || {}));
+    });
+}
+
+async function savePreference(ext, appId) {
+    const prefs = await getPreferences();
+    prefs[ext] = appId;
+    chrome.storage.local.set({ openWithPrefs: prefs });
+}
+
 // --- INIT ---
 async function init() {
     console.log("Bautilus Pro Init...");
@@ -198,6 +220,7 @@ function updateSelectionUI() {
     const barBm = document.getElementById('bar-bookmark');
     const barRename = document.getElementById('bar-rename');
     const barOpen = document.getElementById('bar-open');
+    const barOpenWith = document.getElementById('bar-open-with');
 
     if (selectedFiles.length === 0) {
         bar.classList.add('hidden');
@@ -209,11 +232,13 @@ function updateSelectionUI() {
         label.textContent = selectedFiles[0].name;
         barRename.classList.remove('hidden');
         barOpen.classList.remove('hidden');
+        if (barOpenWith) barOpenWith.classList.remove('hidden');
         if (barBm) barBm.classList.toggle('hidden', !selectedFiles[0].isDirectory);
     } else {
         label.textContent = `${selectedFiles.length} elementos seleccionados`;
         barRename.classList.add('hidden'); // No se puede renombrar múltiple fácilmente
         barOpen.classList.add('hidden');   // Evitar abrir demasiadas ventanas por accidente
+        if (barOpenWith) barOpenWith.classList.add('hidden');
         if (barBm) barBm.classList.add('hidden');
     }
 }
@@ -290,6 +315,7 @@ function setupGlobalEvents() {
 
     // Action Bar
     document.getElementById('bar-open').onclick = () => selectedFile && handleFileOpen(selectedFile);
+    document.getElementById('bar-open-with').onclick = () => selectedFile && handleFileOpen(selectedFile, true);
     document.getElementById('bar-close').onclick = () => {
         selectedFiles = [];
         selectedFile = null;
@@ -457,9 +483,97 @@ function showModal(title, val, action) {
     document.getElementById('btn-modal-cancel').onclick = () => overlay.classList.add('hidden');
 }
 
-function handleFileOpen(file) {
-    const ext = file.ext.replace('.','').toLowerCase();
+async function handleFileOpen(file, forceModal = false) {
+    const ext = file.ext.toLowerCase();
     const url = `${API_URL}/view?path=${encodeURIComponent(file.path)}`;
+    
+    // Check preferences
+    const prefs = await getPreferences();
+    const preferredAppId = prefs[ext];
+
+    if (!forceModal && preferredAppId) {
+        return executeOpenWith(preferredAppId, file, url);
+    }
+
+    // Determine compatible viewers
+    const compatible = Object.entries(INTERNAL_VIEWERS).filter(([id, v]) => v.exts.includes(ext));
+    
+    // If only one internal viewer matches and no preference is set, prompt anyway? 
+    // Or open directly? Requirement says "ask if not set".
+    if (!forceModal && compatible.length === 1 && !preferredAppId) {
+        showOpenWithModal(file, url, compatible);
+    } else if (!forceModal && compatible.length === 0 && !preferredAppId) {
+        // Unknown file type -> ask system or browser
+        showOpenWithModal(file, url, []);
+    } else {
+        showOpenWithModal(file, url, compatible);
+    }
+}
+
+async function executeOpenWith(appId, file, url) {
+    if (INTERNAL_VIEWERS[appId]) {
+        INTERNAL_VIEWERS[appId].action(file, url);
+    } else if (appId === 'browser') {
+        window.open(url, '_blank');
+    } else if (appId === 'system') {
+        await fetch(`${API_URL}/open-system`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ targetPath: file.path }) 
+        });
+    } else {
+        alert("Aplicación no encontrada: " + appId);
+    }
+}
+
+function showOpenWithModal(file, url, compatibleViewers) {
+    const modal = document.getElementById('open-with-modal');
+    const list = document.getElementById('app-list');
+    const check = document.getElementById('always-open-check');
+    const extSpan = document.getElementById('open-with-ext');
+    
+    modal.classList.remove('hidden');
+    document.getElementById('open-with-filename').textContent = `¿Cómo quieres abrir "${file.name}"?`;
+    extSpan.textContent = file.ext;
+    check.checked = false;
+    list.innerHTML = '';
+
+    const addOption = (id, name, icon, tag = '') => {
+        const div = document.createElement('div');
+        div.className = 'app-item';
+        div.innerHTML = `<i data-lucide="${icon}"></i><span>${name}</span>${tag ? `<span class="sys-tag">${tag}</span>` : ''}`;
+        div.onclick = async () => {
+            if (check.checked) {
+                await savePreference(file.ext.toLowerCase(), id);
+            }
+            modal.classList.add('hidden');
+            executeOpenWith(id, file, url);
+        };
+        list.appendChild(div);
+    };
+
+    // 1. Internal Viewers
+    compatibleViewers.forEach(([id, v]) => addOption(id, v.name, v.icon, 'Bautilus'));
+
+    // 2. Browser Tab
+    addOption('browser', 'Navegador Web', 'globe', 'Externo');
+
+    // 3. System Default
+    addOption('system', 'App del Sistema', 'monitor', 'OS Default');
+
+    // 4. Fallback: Code Editor (always available as "Open as text")
+    if (!compatibleViewers.find(v => v[0] === 'code')) {
+        addOption('code', 'Editor de Texto', 'file-text', 'Bautilus');
+    }
+
+    if (window.lucide) lucide.createIcons();
+
+    // Close button logic inside modal
+    modal.querySelector('.btn-close-viewer').onclick = () => modal.classList.add('hidden');
+}
+
+function openImage(file, url) {
+    const ext = file.ext.replace('.','').toLowerCase();
     if (['jpg','png','gif','webp','svg'].includes(ext)) {
         const overlay = document.getElementById('img-overlay');
         overlay.classList.remove('hidden');
@@ -492,21 +606,10 @@ function handleFileOpen(file) {
                     flipVertical: 4,
                 },
                 viewed() {
-                    // This ensures the image starts with a reasonable zoom
                     imgViewer.zoomTo(0.8);
                 }
             });
         };
-    } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
-        openAudio(file, url);
-    } else if (['mp4', 'webm', 'ogv', 'mov', 'mkv'].includes(ext)) {
-        openVideo(file, url);
-    } else if (ext === 'pdf') {
-        openPdf(file, url);
-    } else if (ext === 'zip') {
-        openZip(file, url);
-    } else {
-        openEditor(file, url);
     }
 }
 
