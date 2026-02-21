@@ -559,9 +559,9 @@ function showOpenWithModal(file, url, compatibleViewers) {
     addOption('browser', 'Navegador Web', 'globe', 'Externo');
 
     // 3. System Default
-    addOption('system', 'App del Sistema', 'monitor', 'OS Default');
+    addOption('system', 'App del Sistema (Predeterminada)', 'monitor', 'OS Default');
 
-    // 4. Fallback: Code Editor (always available as "Open as text")
+    // 4. Fallback: Code Editor
     if (!compatibleViewers.find(v => v[0] === 'code')) {
         addOption('code', 'Editor de Texto', 'file-text', 'Bautilus');
     }
