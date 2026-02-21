@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Bautilus File Manager",
+  "version": "1.0",
+  "description": "Un gestor de archivos moderno para tu navegador.",
+  "action": {
+    "default_icon": "bautilus.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:3001/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vs/*",
+        "lucide.min.js",
+        "pdf.min.js",
+        "pdf.worker.min.js",
+        "viewer.min.js",
+        "viewer.min.css",
+        "jszip.min.js",
+        "pdfjs/build/*",
+        "pdfjs/web/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

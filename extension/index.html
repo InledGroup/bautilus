@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bautilus</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="viewer.min.css">
+    <script src="lucide.min.js"></script>
+    <script src="pdf.min.js"></script>
+    <script src="viewer.min.js"></script>
+    <script src="jszip.min.js"></script>
+    <script src="vs/loader.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="bookmarks-header">Lugares</div>
+            <ul id="system-bookmarks"></ul>
+            <div class="bookmarks-header" style="margin-top:20px;">Marcadores</div>
+            <ul id="custom-bookmarks"></ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="headerbar">
+                <div class="header-section header-start">
+                    <button id="btn-back" class="btn-icon"><i data-lucide="arrow-left"></i></button>
+                    <button id="btn-forward" class="btn-icon"><i data-lucide="arrow-right"></i></button>
+                    <button id="btn-up" class="btn-icon"><i data-lucide="arrow-up"></i></button>
+                </div>
+                
+                <div class="header-section header-center">
+                    <div id="breadcrumb" class="path-bar"></div>
+                </div>
+
+                <div class="header-section header-end">
+                    <div class="search-entry">
+                        <i data-lucide="search" size="14"></i>
+                        <input type="text" id="search-input" placeholder="Buscar...">
+                    </div>
+                    <select id="sort-select" class="sort-select">
+                        <option value="name">Nombre</option>
+                        <option value="date">Fecha</option>
+                        <option value="size">Tamaño</option>
+                    </select>
+                    <button id="btn-view-toggle" class="btn-icon"><i data-lucide="layout-grid"></i></button>
+                    <button id="btn-new-folder" class="btn-icon"><i data-lucide="folder-plus"></i></button>
+                </div>
+            </header>
+
+            <div class="file-view-container">
+                <div id="list-header" class="list-header hidden">
+                    <div style="flex:2;">Nombre</div>
+                    <div style="flex:1;">Tamaño</div>
+                    <div style="flex:1;">Modificado</div>
+                </div>
+                <div id="file-view" class="file-view grid-view"></div>
+            </div>
+
+            <!-- Action Bar -->
+            <div id="bottom-bar" class="bottom-bar hidden">
+                <span id="selected-file-name" class="selected-label"></span>
+                <button id="bar-open" title="Abrir"><i data-lucide="external-link"></i></button>
+                <div class="bar-divider"></div>
+                <button id="bar-copy" title="Copiar"><i data-lucide="copy"></i></button>
+                <button id="bar-cut" title="Cortar"><i data-lucide="scissors"></i></button>
+                <button id="bar-rename" title="Renombrar"><i data-lucide="pencil"></i></button>
+                <button id="bar-bookmark" title="Añadir marcador"><i data-lucide="star"></i></button>
+                <button id="bar-delete" style="color:#ff7b7b;" title="Eliminar"><i data-lucide="trash-2"></i></button>
+                <div class="bar-divider"></div>
+                <button id="bar-close"><i data-lucide="x"></i></button>
+            </div>
+            
+            <!-- Paste & Cancel Action Bar -->
+            <div id="paste-bar" class="bottom-bar hidden" style="background:#3584e4; bottom:100px;">
+                <button id="btn-paste" style="color:white; font-weight:600;"><i data-lucide="clipboard"></i> <span style="margin-left:8px;">Pegar aquí</span></button>
+                <div class="bar-divider" style="background:rgba(255,255,255,0.3);"></div>
+                <button id="btn-clear-clipboard" style="color:white; opacity:0.8;"><i data-lucide="x"></i></button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-overlay" class="preview-overlay hidden">
+        <div class="preview-popup modal-dialog">
+            <h3 id="modal-title">Título</h3>
+            <div class="modal-input-box">
+                <input type="text" id="modal-input">
+            </div>
+            <div class="modal-actions">
+                <button id="btn-modal-cancel" class="btn-flat">Cancelar</button>
+                <button id="btn-modal-confirm" class="btn-flat primary">Aceptar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Viewers -->
+    <div id="code-overlay" class="preview-overlay hidden">
+        <div class="preview-popup">
+            <div class="popup-header">
+                <span id="code-title" class="popup-title">Editor</span>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-code-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
+                    <button id="btn-save-code" class="btn-save">Guardar</button>
+                    <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="viewer-content"><div id="monaco-container"></div></div>
+        </div>
+    </div>
+
+    <div id="img-overlay" class="preview-overlay hidden">
+        <div class="preview-popup">
+            <div class="popup-header">
+                <span id="img-title" class="popup-title">Imagen</span>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-img-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
+                    <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="viewer-content image-content"><img id="preview-img"></div>
+        </div>
+    </div>
+
+    <div id="pdf-overlay" class="preview-overlay hidden">
+        <div class="preview-popup">
+            <div class="popup-header">
+                <span id="pdf-title" class="popup-title">PDF</span>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-pdf-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
+                    <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="viewer-content pdf-content" id="pdf-container"></div>
+        </div>
+    </div>
+
+    <div id="zip-overlay" class="preview-overlay hidden">
+        <div class="preview-popup">
+            <div class="popup-header">
+                <span id="zip-title" class="popup-title">Contenido del ZIP</span>
+                <div style="display:flex; gap:8px;">
+                    <button id="btn-unzip-here" class="btn-save">Extraer aquí</button>
+                    <button id="btn-unzip-folder" class="btn-save" style="background:#555 !important;">Extraer en carpeta</button>
+                    <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="viewer-content">
+                <div id="zip-list" class="zip-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
