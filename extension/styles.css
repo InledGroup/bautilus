@@ -78,8 +78,21 @@ button { border: none !important; background: transparent !important; cursor: po
 
 /* GRID VIEW */
 .grid-view { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
-.grid-view .file-item { display: flex; flex-direction: column; align-items: center; padding: 12px; border-radius: 12px; text-align: center; height: 140px; border: 2px solid transparent !important; }
-.grid-view .file-item img { width: 64px; height: 64px; margin-bottom: 8px; }
+.grid-view .file-item { display: flex; flex-direction: column; align-items: center; padding: 12px; border-radius: 12px; text-align: center; height: 145px; border: 2px solid transparent !important; overflow: hidden; }
+.grid-view .file-item img { width: 64px; height: 64px; margin-bottom: 8px; flex-shrink: 0; }
+.grid-view .file-item .name { 
+    width: 100%; 
+    font-size: 12px; 
+    font-weight: 600; 
+    line-height: 1.3;
+    max-height: 2.6em; 
+    overflow: hidden; 
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-all;
+    text-overflow: ellipsis;
+}
 .grid-view .file-meta { display: none; }
 
 /* LIST VIEW */
