@@ -16,6 +16,7 @@ let forwardStack = [];
 // Viewer State
 let monacoEditor = null;
 let imgViewer = null;
+let plyrPlayer = null;
 let pdfDoc = null;
 let pdfScale = 1.3;
 let pdfObserver = null;
@@ -255,6 +256,7 @@ function getAdwaitaIcon(f) {
     const e = f.ext.toLowerCase();
     if (e === '.pdf') return 'icons/adwaita/file-pdf.svg';
     if (['.jpg','.png','.gif','.svg','.webp'].includes(e)) return 'icons/adwaita/file-image.svg';
+    if (['.mp3','.wav','.ogg','.m4a'].includes(e)) return 'icons/adwaita/file-audio.svg';
     if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(e)) return 'icons/adwaita/file-archive.svg';
     if (['.html','.js','.css','.json','.ts'].includes(e)) return 'icons/adwaita/file-code.svg';
     return 'icons/adwaita/file-text.svg';
@@ -382,6 +384,15 @@ function setupGlobalEvents() {
                 imgViewer.destroy();
                 imgViewer = null;
             }
+            if (overlay.id === 'audio-overlay' && plyrPlayer) {
+                plyrPlayer.stop();
+                plyrPlayer.destroy();
+                plyrPlayer = null;
+                const audio = document.getElementById('audio-player');
+                if (audio) {
+                    audio.src = '';
+                }
+            }
             if (overlay.id === 'pdf-overlay') {
                 const container = document.getElementById('pdf-container');
                 const iframe = container.querySelector('iframe');
@@ -466,6 +477,8 @@ function handleFileOpen(file) {
                 }
             });
         };
+    } else if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) {
+        openAudio(file, url);
     } else if (ext === 'pdf') {
         openPdf(file, url);
     } else if (ext === 'zip') {
@@ -559,6 +572,28 @@ async function performUnzip(zipPath, createFolder) {
         btn1.textContent = originalText1;
         btn2.textContent = originalText2;
     }
+}
+
+async function openAudio(file, url) {
+    const overlay = document.getElementById('audio-overlay');
+    overlay.classList.remove('hidden');
+    document.getElementById('audio-title').textContent = file.name;
+    document.getElementById('audio-filename').textContent = file.name;
+    
+    const audio = document.getElementById('audio-player');
+    audio.src = url;
+    
+    if (plyrPlayer) {
+        plyrPlayer.destroy();
+    }
+    
+    // Create new Plyr instance
+    plyrPlayer = new Plyr(audio, {
+        controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume'],
+        keyboard: { focused: true, global: true }
+    });
+    
+    plyrPlayer.play();
 }
 
 async function openEditor(file, url) {

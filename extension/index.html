@@ -6,10 +6,12 @@
     <title>Bautilus</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="viewer.min.css">
+    <link rel="stylesheet" href="plyr.min.css">
     <script src="lucide.min.js"></script>
     <script src="pdf.min.js"></script>
     <script src="viewer.min.js"></script>
     <script src="jszip.min.js"></script>
+    <script src="plyr.min.js"></script>
     <script src="vs/loader.js"></script>
 </head>
 <body>
@@ -147,6 +149,28 @@
             </div>
             <div class="viewer-content">
                 <div id="zip-list" class="zip-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="audio-overlay" class="preview-overlay hidden">
+        <div class="preview-popup audio-popup">
+            <div class="popup-header">
+                <span id="audio-title" class="popup-title">Reproductor</span>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div class="viewer-content audio-content">
+                <div class="audio-wrapper">
+                    <div class="audio-art">
+                        <i data-lucide="music" size="80"></i>
+                    </div>
+                    <h2 id="audio-filename">Nombre de archivo.mp3</h2>
+                    <div class="plyr-container">
+                        <audio id="audio-player" controls></audio>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

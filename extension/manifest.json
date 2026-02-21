@@ -27,6 +27,8 @@
         "viewer.min.js",
         "viewer.min.css",
         "jszip.min.js",
+        "plyr.min.js",
+        "plyr.min.css",
         "pdfjs/build/*",
         "pdfjs/web/*"
       ],
