@@ -105,14 +105,24 @@ function render() {
         
         const sizeStr = file.isDirectory ? '--' : formatSize(file.size);
         const dateStr = new Date(file.mtime).toLocaleDateString();
+        const isVideo = ['.mp4','.webm','.ogv','.mov','.mkv'].includes(file.ext.toLowerCase());
 
         item.innerHTML = `
-            <img src="${getAdwaitaIcon(file)}">
+            <div class="thumb-container">
+                <img src="${getAdwaitaIcon(file)}" class="icon-img">
+                ${isVideo ? '<div class="video-badge"><i data-lucide="play" size="18"></i></div>' : ''}
+            </div>
             <div class="name">${file.name}</div>
             <div class="file-meta">${sizeStr}</div>
             <div class="file-meta">${dateStr}</div>
         `;
         
+        // Asynchronously load thumbnail if applicable
+        if (!file.isDirectory) {
+            const imgEl = item.querySelector('.icon-img');
+            loadThumbnail(file, imgEl, item.querySelector('.thumb-container'));
+        }
+
         item.addEventListener('click', (e) => {
             e.stopPropagation();
             selectFile(file, e);
@@ -759,6 +769,155 @@ function updateActiveBookmark() {
             li.classList.remove('active');
         }
     });
+}
+
+// --- THUMBNAIL MANAGER (IndexedDB) ---
+const ThumbDB = {
+    dbName: 'BautilusThumbs',
+    storeName: 'thumbnails',
+    version: 1,
+
+    open() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.dbName, this.version);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this.storeName)) {
+                    db.createObjectStore(this.storeName);
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async get(id) {
+        const db = await this.open();
+        return new Promise((resolve) => {
+            const tx = db.transaction(this.storeName, 'readonly');
+            const store = tx.objectStore(this.storeName);
+            const req = store.get(id);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => resolve(null);
+        });
+    },
+
+    async set(id, data) {
+        const db = await this.open();
+        return new Promise((resolve) => {
+            const tx = db.transaction(this.storeName, 'readwrite');
+            const store = tx.objectStore(this.storeName);
+            store.put(data, id);
+            tx.oncomplete = () => resolve();
+        });
+    }
+};
+
+async function loadThumbnail(file, imgEl, container) {
+    if (file.isDirectory) return;
+
+    const ext = file.ext.toLowerCase();
+    const isImg = ['.jpg','.jpeg','.png','.gif','.webp','.svg'].includes(ext);
+    const isVid = ['.mp4','.webm','.ogv','.mov','.mkv'].includes(ext);
+    const isPdf = ext === '.pdf';
+
+    if (!isImg && !isVid && !isPdf) return;
+
+    const thumbId = `${file.path}_${file.mtime}`;
+    const cached = await ThumbDB.get(thumbId);
+
+    if (cached) {
+        imgEl.src = cached;
+        imgEl.classList.add('is-thumbnail');
+        return;
+    }
+
+    const url = `${API_URL}/view?path=${encodeURIComponent(file.path)}`;
+    let thumbData = null;
+
+    try {
+        if (isImg) thumbData = await generateImageThumb(url);
+        else if (isVid) thumbData = await generateVideoThumb(url);
+        else if (isPdf) thumbData = await generatePdfThumb(url);
+
+        if (thumbData) {
+            await ThumbDB.set(thumbId, thumbData);
+            imgEl.src = thumbData;
+            imgEl.classList.add('is-thumbnail');
+        }
+    } catch (e) { console.warn("Thumb gen error:", e); }
+}
+
+function generateImageThumb(url) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const size = 128; // Higher res for better display
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const scale = Math.max(size / img.width, size / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.onerror = reject;
+        img.src = url;
+    });
+}
+
+function generateVideoThumb(url) {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.crossOrigin = "anonymous";
+        video.preload = "metadata";
+        video.muted = true;
+        video.onloadedmetadata = () => {
+            video.currentTime = 1; // Try to capture at 1s
+        };
+        video.onseeked = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            const scale = Math.max(128 / video.videoWidth, 128 / video.videoHeight);
+            const w = video.videoWidth * scale;
+            const h = video.videoHeight * scale;
+            ctx.drawImage(video, (128 - w) / 2, (128 - h) / 2, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        video.onerror = reject;
+        video.src = url;
+    });
+}
+
+async function generatePdfThumb(url) {
+    if (!window.pdfjsLib) return null;
+    try {
+        const loadingTask = pdfjsLib.getDocument(url);
+        const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
+        
+        // Use a small scale to get base dimensions
+        const baseViewport = page.getViewport({ scale: 1.0 });
+        const scale = 128 / Math.max(baseViewport.width, baseViewport.height);
+        const viewport = page.getViewport({ scale: scale });
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        
+        await page.render({ 
+            canvasContext: ctx, 
+            viewport: viewport 
+        }).promise;
+        
+        return canvas.toDataURL('image/jpeg', 0.8);
+    } catch (e) { console.error("PDF thumb error:", e); return null; }
 }
 
 init();
