@@ -148,16 +148,11 @@ app.post('/compress', async (req, res) => {
 app.post('/open-system', async (req, res) => {
     try {
         const { targetPath } = req.body;
-        // Direct call to 'open' command via child_process for maximum reliability on macOS
-        const { exec } = require('child_process');
-        exec(`open "${targetPath.replace(/"/g, '\\"')}"`, (error) => {
-            if (error) {
-                console.error(`exec error: ${error}`);
-                return res.status(500).json({ error: error.message });
-            }
-            res.json({ success: true });
-        });
+        // Use the 'open' library which is cross-platform (macOS, Windows, Linux)
+        await open(targetPath);
+        res.json({ success: true });
     } catch (error) {
+        console.error(`Open error: ${error}`);
         res.status(500).json({ error: error.message });
     }
 });

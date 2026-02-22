@@ -28,6 +28,8 @@ jobs:
           mkdir bautilus-server
           cp -r server/* bautilus-server/
           cp setup-macos-startup.sh bautilus-server/
+          cp setup-windows-startup.ps1 bautilus-server/
+          cp setup-linux-startup.sh bautilus-server/
           zip -r bautilus-server.zip bautilus-server
           rm -rf bautilus-server
 
@@ -46,9 +48,9 @@ jobs:
             bautilus-extension.zip
             bautilus-server.zip
           body: |
-            ## 🚀 Bautilus: New Automated Release
+            ## 🚀 Bautilus: Multi-platform Release
             
-            This release contains the Bautilus components ready for installation.
+            This release contains the Bautilus components ready for installation on **Windows**, **Linux**, and **macOS**.
             
             ### 1. Extension Installation (Browser)
             1. Download and extract `bautilus-extension.zip`.
@@ -65,18 +67,21 @@ jobs:
                npm install
                ```
             
-            #### macOS Configuration (Auto-startup):
-            If you are on Mac, you can set the server to start automatically on login:
-            1. Grant execution permissions to the script:
-               ```bash
-               chmod +x setup-macos-startup.sh
-               ```
-            2. Run the setup script:
-               ```bash
-               ./setup-macos-startup.sh
-               ```
+            ### 🏁 Automated Startup Setup
             
-            #### Manual Startup (Any OS):
+            #### 🍎 macOS:
+            1. Grant execution permissions: `chmod +x setup-macos-startup.sh`
+            2. Run: `./setup-macos-startup.sh`
+            
+            #### 🪟 Windows:
+            1. Open PowerShell as Administrator.
+            2. Run: `.\setup-windows-startup.ps1`
+            
+            #### 🐧 Linux:
+            1. Grant execution permissions: `chmod +x setup-linux-startup.sh`
+            2. Run: `./setup-linux-startup.sh`
+            
+            #### 🛠️ Manual Startup (Any OS):
             If you prefer to start it manually:
             ```bash
             node index.js
