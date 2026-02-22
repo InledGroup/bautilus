@@ -1,0 +1,14 @@
+{
+  "appName": {
+    "message": "Bautilus File Manager"
+  },
+  "appDescription": {
+    "message": "A modern file manager for your browser."
+  },
+  "downloadCompleted": {
+    "message": "Download Completed"
+  },
+  "savedIn": {
+    "message": "Saved in:"
+  }
+}

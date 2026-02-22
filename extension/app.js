@@ -78,7 +78,12 @@ const translations = {
         os_default: "OS Default",
         text_editor: "Editor de Texto",
         bautilus: "Bautilus",
-        app_not_found: "Aplicación no encontrada: "
+        app_not_found: "Aplicación no encontrada: ",
+        select: "Seleccionar",
+        name_label: "Nombre:",
+        save_here: "Guardar Aquí",
+        select_valid_file: "Selecciona un archivo válido",
+        error_no_filename: "Por favor, escribe un nombre de archivo."
     },
     en: {
         places: "Places",
@@ -142,7 +147,12 @@ const translations = {
         os_default: "OS Default",
         text_editor: "Text Editor",
         bautilus: "Bautilus",
-        app_not_found: "Application not found: "
+        app_not_found: "Application not found: ",
+        select: "Select",
+        name_label: "Name:",
+        save_here: "Save Here",
+        select_valid_file: "Select a valid file",
+        error_no_filename: "Please write a filename."
     }
 };
 
@@ -391,7 +401,7 @@ function updateSelectionUI() {
             label.textContent = selectedFiles[0].name;
         } else {
             btnSelect.disabled = true;
-            label.textContent = selectedFiles.length > 0 ? 'Selecciona un archivo válido' : '';
+            label.textContent = selectedFiles.length > 0 ? t('select_valid_file') : '';
         }
         return;
     }
@@ -701,7 +711,7 @@ function setupGlobalEvents() {
         if (btnConfirm) {
             btnConfirm.onclick = () => {
                 const filename = inp ? inp.value : '';
-                if (!filename) return alert('Por favor, escribe un nombre de archivo.');
+                if (!filename) return alert(t('error_no_filename'));
                 
                 chrome.runtime.sendMessage({
                     action: 'save_target_selected',

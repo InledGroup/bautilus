@@ -61,12 +61,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             body: JSON.stringify({ url: fileUrl, targetPath, filename })
         }).then(res => {
             if (res.ok) {
-                // Optional: Notify user success
                 chrome.notifications.create({
                     type: 'basic',
                     iconUrl: 'bautilus.png',
-                    title: 'Descarga Completada',
-                    message: `Guardado en: ${targetPath}`
+                    title: chrome.i18n.getMessage("downloadCompleted"),
+                    message: `${chrome.i18n.getMessage("savedIn")} ${targetPath}`
                 });
             } else {
                 console.error("Download failed on server");

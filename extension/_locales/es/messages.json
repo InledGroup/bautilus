@@ -1,0 +1,14 @@
+{
+  "appName": {
+    "message": "Bautilus File Manager"
+  },
+  "appDescription": {
+    "message": "Un gestor de archivos moderno para tu navegador."
+  },
+  "downloadCompleted": {
+    "message": "Descarga Completada"
+  },
+  "savedIn": {
+    "message": "Guardado en:"
+  }
+}

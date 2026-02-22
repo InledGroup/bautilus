@@ -83,18 +83,18 @@
                 <div style="flex:1;">
                     <span id="picker-filename" style="margin-left:10px; font-weight:500;"></span>
                 </div>
-                <button id="btn-picker-cancel" class="btn-flat" style="margin-right:10px;">Cancelar</button>
-                <button id="btn-picker-select" class="btn-flat primary" disabled>Seleccionar</button>
+                <button id="btn-picker-cancel" class="btn-flat" style="margin-right:10px;" data-i18n="cancel">Cancelar</button>
+                <button id="btn-picker-select" class="btn-flat primary" disabled data-i18n="select">Seleccionar</button>
             </div>
             
             <!-- Save Action Bar -->
             <div id="save-bar" class="bottom-bar hidden" style="background:var(--bg-secondary); border-top:1px solid var(--border); z-index: 100;">
                  <div style="flex:1; display:flex; gap:10px; align-items:center; padding-left:10px;">
-                    <span>Nombre:</span>
+                    <span data-i18n="name_label">Nombre:</span>
                     <input type="text" id="save-filename-input" class="search-entry" style="flex:1; max-width:300px; color: var(--text-main); background: var(--bg-main); border: 1px solid var(--border);">
                 </div>
-                <button id="btn-save-cancel" class="btn-flat" style="margin-right:10px;">Cancelar</button>
-                <button id="btn-save-confirm" class="btn-flat primary">Guardar Aquí</button>
+                <button id="btn-save-cancel" class="btn-flat" style="margin-right:10px;" data-i18n="cancel">Cancelar</button>
+                <button id="btn-save-confirm" class="btn-flat primary" data-i18n="save_here">Guardar Aquí</button>
             </div>
             
             <!-- Paste & Cancel Action Bar -->
