@@ -17,9 +17,9 @@
 <body>
     <div class="app-container">
         <aside class="sidebar">
-            <div class="bookmarks-header">Lugares</div>
+            <div class="bookmarks-header" data-i18n="places">Lugares</div>
             <ul id="system-bookmarks"></ul>
-            <div class="bookmarks-header" style="margin-top:20px;">Marcadores</div>
+            <div class="bookmarks-header" style="margin-top:20px;" data-i18n="bookmarks">Marcadores</div>
             <ul id="custom-bookmarks"></ul>
         </aside>
 
@@ -38,12 +38,16 @@
                 <div class="header-section header-end">
                     <div class="search-entry">
                         <i data-lucide="search" size="14"></i>
-                        <input type="text" id="search-input" placeholder="Buscar...">
+                        <input type="text" id="search-input" placeholder="Buscar..." data-i18n-placeholder="search">
                     </div>
                     <select id="sort-select" class="sort-select">
-                        <option value="name">Nombre</option>
-                        <option value="date">Fecha</option>
-                        <option value="size">Tamaño</option>
+                        <option value="name" data-i18n="sort_name">Nombre</option>
+                        <option value="date" data-i18n="sort_date">Fecha</option>
+                        <option value="size" data-i18n="sort_size">Tamaño</option>
+                    </select>
+                    <select id="lang-select" class="sort-select" style="width: auto;">
+                        <option value="es">ES</option>
+                        <option value="en">EN</option>
                     </select>
                     <button id="btn-view-toggle" class="btn-icon"><i data-lucide="layout-grid"></i></button>
                     <button id="btn-new-folder" class="btn-icon"><i data-lucide="folder-plus"></i></button>
@@ -52,9 +56,9 @@
 
             <div class="file-view-container">
                 <div id="list-header" class="list-header hidden">
-                    <div style="flex:2;">Nombre</div>
-                    <div style="flex:1;">Tamaño</div>
-                    <div style="flex:1;">Modificado</div>
+                    <div style="flex:2;" data-i18n="name">Nombre</div>
+                    <div style="flex:1;" data-i18n="size">Tamaño</div>
+                    <div style="flex:1;" data-i18n="modified">Modificado</div>
                 </div>
                 <div id="file-view" class="file-view grid-view"></div>
             </div>
@@ -62,21 +66,40 @@
             <!-- Action Bar -->
             <div id="bottom-bar" class="bottom-bar hidden">
                 <span id="selected-file-name" class="selected-label"></span>
-                <button id="bar-open" title="Abrir"><i data-lucide="external-link"></i></button>
-                <button id="bar-open-with" title="Abrir con..."><i data-lucide="layout-grid"></i></button>
+                <button id="bar-open" title="Abrir" data-i18n-title="open"><i data-lucide="external-link"></i></button>
+                <button id="bar-open-with" title="Abrir con..." data-i18n-title="open_with"><i data-lucide="layout-grid"></i></button>
                 <div class="bar-divider"></div>
-                <button id="bar-copy" title="Copiar"><i data-lucide="copy"></i></button>
-                <button id="bar-cut" title="Cortar"><i data-lucide="scissors"></i></button>
-                <button id="bar-rename" title="Renombrar"><i data-lucide="pencil"></i></button>
-                <button id="bar-bookmark" title="Añadir marcador"><i data-lucide="star"></i></button>
-                <button id="bar-delete" style="color:#ff7b7b;" title="Eliminar"><i data-lucide="trash-2"></i></button>
+                <button id="bar-copy" title="Copiar" data-i18n-title="copy"><i data-lucide="copy"></i></button>
+                <button id="bar-cut" title="Cortar" data-i18n-title="cut"><i data-lucide="scissors"></i></button>
+                <button id="bar-rename" title="Renombrar" data-i18n-title="rename"><i data-lucide="pencil"></i></button>
+                <button id="bar-bookmark" title="Añadir marcador" data-i18n-title="add_bookmark"><i data-lucide="star"></i></button>
+                <button id="bar-delete" style="color:#ff7b7b;" title="Eliminar" data-i18n-title="delete"><i data-lucide="trash-2"></i></button>
                 <div class="bar-divider"></div>
                 <button id="bar-close"><i data-lucide="x"></i></button>
+            </div>
+
+            <!-- Picker Action Bar -->
+            <div id="picker-bar" class="bottom-bar hidden" style="background:var(--bg-secondary); border-top:1px solid var(--border); z-index: 100;">
+                <div style="flex:1;">
+                    <span id="picker-filename" style="margin-left:10px; font-weight:500;"></span>
+                </div>
+                <button id="btn-picker-cancel" class="btn-flat" style="margin-right:10px;">Cancelar</button>
+                <button id="btn-picker-select" class="btn-flat primary" disabled>Seleccionar</button>
+            </div>
+            
+            <!-- Save Action Bar -->
+            <div id="save-bar" class="bottom-bar hidden" style="background:var(--bg-secondary); border-top:1px solid var(--border); z-index: 100;">
+                 <div style="flex:1; display:flex; gap:10px; align-items:center; padding-left:10px;">
+                    <span>Nombre:</span>
+                    <input type="text" id="save-filename-input" class="search-entry" style="flex:1; max-width:300px; color: var(--text-main); background: var(--bg-main); border: 1px solid var(--border);">
+                </div>
+                <button id="btn-save-cancel" class="btn-flat" style="margin-right:10px;">Cancelar</button>
+                <button id="btn-save-confirm" class="btn-flat primary">Guardar Aquí</button>
             </div>
             
             <!-- Paste & Cancel Action Bar -->
             <div id="paste-bar" class="bottom-bar hidden" style="background:#3584e4; bottom:100px;">
-                <button id="btn-paste" style="color:white; font-weight:600;"><i data-lucide="clipboard"></i> <span style="margin-left:8px;">Pegar aquí</span></button>
+                <button id="btn-paste" style="color:white; font-weight:600;"><i data-lucide="clipboard"></i> <span style="margin-left:8px;" data-i18n="paste_here">Pegar aquí</span></button>
                 <div class="bar-divider" style="background:rgba(255,255,255,0.3);"></div>
                 <button id="btn-clear-clipboard" style="color:white; opacity:0.8;"><i data-lucide="x"></i></button>
             </div>
@@ -86,13 +109,13 @@
     <!-- Modals -->
     <div id="modal-overlay" class="preview-overlay hidden">
         <div class="preview-popup modal-dialog">
-            <h3 id="modal-title">Título</h3>
+            <h3 id="modal-title" data-i18n="title">Título</h3>
             <div class="modal-input-box">
                 <input type="text" id="modal-input">
             </div>
             <div class="modal-actions">
-                <button id="btn-modal-cancel" class="btn-flat">Cancelar</button>
-                <button id="btn-modal-confirm" class="btn-flat primary">Aceptar</button>
+                <button id="btn-modal-cancel" class="btn-flat" data-i18n="cancel">Cancelar</button>
+                <button id="btn-modal-confirm" class="btn-flat primary" data-i18n="accept">Aceptar</button>
             </div>
         </div>
     </div>
@@ -101,10 +124,10 @@
     <div id="code-overlay" class="preview-overlay hidden">
         <div class="preview-popup">
             <div class="popup-header">
-                <span id="code-title" class="popup-title">Editor</span>
+                <span id="code-title" class="popup-title" data-i18n="editor">Editor</span>
                 <div style="display:flex; gap:8px;">
                     <button id="btn-code-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
-                    <button id="btn-save-code" class="btn-save">Guardar</button>
+                    <button id="btn-save-code" class="btn-save" data-i18n="save">Guardar</button>
                     <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
                 </div>
             </div>
@@ -115,7 +138,7 @@
     <div id="img-overlay" class="preview-overlay hidden">
         <div class="preview-popup">
             <div class="popup-header">
-                <span id="img-title" class="popup-title">Imagen</span>
+                <span id="img-title" class="popup-title" data-i18n="image">Imagen</span>
                 <div style="display:flex; gap:8px;">
                     <button id="btn-img-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
                     <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
@@ -128,7 +151,7 @@
     <div id="pdf-overlay" class="preview-overlay hidden">
         <div class="preview-popup">
             <div class="popup-header">
-                <span id="pdf-title" class="popup-title">PDF</span>
+                <span id="pdf-title" class="popup-title" data-i18n="pdf">PDF</span>
                 <div style="display:flex; gap:8px;">
                     <button id="btn-pdf-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
                     <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
@@ -141,10 +164,10 @@
     <div id="zip-overlay" class="preview-overlay hidden">
         <div class="preview-popup">
             <div class="popup-header">
-                <span id="zip-title" class="popup-title">Contenido del ZIP</span>
+                <span id="zip-title" class="popup-title" data-i18n="zip_contents">Contenido del ZIP</span>
                 <div style="display:flex; gap:8px;">
-                    <button id="btn-unzip-here" class="btn-save">Extraer aquí</button>
-                    <button id="btn-unzip-folder" class="btn-save" style="background:#555 !important;">Extraer en carpeta</button>
+                    <button id="btn-unzip-here" class="btn-save" data-i18n="extract_here">Extraer aquí</button>
+                    <button id="btn-unzip-folder" class="btn-save" style="background:#555 !important;" data-i18n="extract_to_folder">Extraer en carpeta</button>
                     <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
                 </div>
             </div>
@@ -157,7 +180,7 @@
     <div id="audio-overlay" class="preview-overlay hidden">
         <div class="preview-popup audio-popup">
             <div class="popup-header">
-                <span id="audio-title" class="popup-title">Reproductor</span>
+                <span id="audio-title" class="popup-title" data-i18n="player">Reproductor</span>
                 <div style="display:flex; gap:8px;">
                     <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
                 </div>
@@ -179,7 +202,7 @@
     <div id="video-overlay" class="preview-overlay hidden">
         <div class="preview-popup video-popup">
             <div class="popup-header">
-                <span id="video-title" class="popup-title">Vídeo</span>
+                <span id="video-title" class="popup-title" data-i18n="video">Vídeo</span>
                 <div style="display:flex; gap:8px;">
                     <button id="btn-video-tab" class="btn-icon"><i data-lucide="external-link"></i></button>
                     <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
@@ -197,17 +220,17 @@
     <div id="open-with-modal" class="preview-overlay hidden">
         <div class="preview-popup modal-dialog" style="width: 400px;">
             <div class="popup-header">
-                <span class="popup-title">Abrir con...</span>
+                <span class="popup-title" data-i18n="open_with">Abrir con...</span>
                 <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
             </div>
             <div style="padding: 20px;">
-                <p id="open-with-filename" style="margin-bottom: 15px; font-size: 13px; color: var(--text-muted);">Selecciona una aplicación</p>
+                <p id="open-with-filename" style="margin-bottom: 15px; font-size: 13px; color: var(--text-muted);" data-i18n="select_app">Selecciona una aplicación</p>
                 <div id="app-list" class="app-list">
                     <!-- App items will be injected here -->
                 </div>
                 <div style="margin-top: 20px; display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="always-open-check">
-                    <label for="always-open-check" style="font-size: 13px;">Usar siempre esta aplicación para archivos <span id="open-with-ext"></span></label>
+                    <label for="always-open-check" style="font-size: 13px;"><span data-i18n="always_use_this_app">Usar siempre esta aplicación para archivos</span> <span id="open-with-ext"></span></label>
                 </div>
             </div>
         </div>

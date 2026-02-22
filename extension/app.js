@@ -9,6 +9,164 @@ let renderedFiles = []; // Para trackear el orden visual actual
 let selectedFiles = []; // Nuevo array para selección múltiple
 let lastSelectedIdx = -1;
 
+const urlParams = new URLSearchParams(window.location.search);
+const APP_MODE = urlParams.get('mode') || 'normal'; // normal, picker, save
+const SAVE_FILENAME_PARAM = urlParams.get('filename') || '';
+const SAVE_URL_PARAM = urlParams.get('url') || '';
+let currentLang = 'es';
+
+const translations = {
+    es: {
+        places: "Lugares",
+        bookmarks: "Marcadores",
+        search: "Buscar...",
+        sort_name: "Nombre",
+        sort_date: "Fecha",
+        sort_size: "Tamaño",
+        name: "Nombre",
+        size: "Tamaño",
+        modified: "Modificado",
+        open: "Abrir",
+        open_with: "Abrir con...",
+        copy: "Copiar",
+        cut: "Cortar",
+        rename: "Renombrar",
+        add_bookmark: "Añadir marcador",
+        delete: "Eliminar",
+        paste_here: "Pegar aquí",
+        title: "Título",
+        cancel: "Cancelar",
+        accept: "Aceptar",
+        editor: "Editor",
+        save: "Guardar",
+        image: "Imagen",
+        pdf: "PDF",
+        zip_contents: "Contenido del ZIP",
+        extract_here: "Extraer aquí",
+        extract_to_folder: "Extraer en carpeta",
+        player: "Reproductor",
+        video: "Vídeo",
+        select_app: "Selecciona una aplicación",
+        always_use_this_app: "Usar siempre esta aplicación para archivos",
+        items_selected: "elementos seleccionados",
+        this_pc: "Este Equipo",
+        root: "Raíz",
+        new_folder: "Nueva Carpeta",
+        new_folder_name: "Carpeta nueva",
+        saved_success: "Guardado con éxito.",
+        delete_confirm: "¿Eliminar definitivamente {names}?",
+        analyzing_zip: "Analizando archivo...",
+        error_zip: "Error al leer ZIP",
+        processing: "Procesando...",
+        error_unzip: "Error al descomprimir",
+        network_error: "Error de red",
+        loading_pdf: "Cargando visor oficial...",
+        error_pdf: "Error al cargar PDF",
+        home: "Inicio",
+        desktop: "Escritorio",
+        documents: "Documentos",
+        downloads: "Descargas",
+        img_viewer: "Visor de Imágenes",
+        video_player: "Reproductor de Vídeo",
+        music_player: "Reproductor de Música",
+        pdf_viewer: "Visor PDF",
+        zip_explorer: "Explorador ZIP",
+        code_editor: "Editor de Código",
+        web_browser: "Navegador Web",
+        external: "Externo",
+        system_app: "App del Sistema (Predeterminada)",
+        os_default: "OS Default",
+        text_editor: "Editor de Texto",
+        bautilus: "Bautilus",
+        app_not_found: "Aplicación no encontrada: "
+    },
+    en: {
+        places: "Places",
+        bookmarks: "Bookmarks",
+        search: "Search...",
+        sort_name: "Name",
+        sort_date: "Date",
+        sort_size: "Size",
+        name: "Name",
+        size: "Size",
+        modified: "Modified",
+        open: "Open",
+        open_with: "Open with...",
+        copy: "Copy",
+        cut: "Cut",
+        rename: "Rename",
+        add_bookmark: "Add Bookmark",
+        delete: "Delete",
+        paste_here: "Paste here",
+        title: "Title",
+        cancel: "Cancel",
+        accept: "Accept",
+        editor: "Editor",
+        save: "Save",
+        image: "Image",
+        pdf: "PDF",
+        zip_contents: "ZIP Contents",
+        extract_here: "Extract here",
+        extract_to_folder: "Extract to folder",
+        player: "Player",
+        video: "Video",
+        select_app: "Select an application",
+        always_use_this_app: "Always use this application for",
+        items_selected: "items selected",
+        this_pc: "This PC",
+        root: "Root",
+        new_folder: "New Folder",
+        new_folder_name: "New folder",
+        saved_success: "Saved successfully.",
+        delete_confirm: "Permanently delete {names}?",
+        analyzing_zip: "Analyzing file...",
+        error_zip: "Error reading ZIP",
+        processing: "Processing...",
+        error_unzip: "Error unzipping",
+        network_error: "Network error",
+        loading_pdf: "Loading official viewer...",
+        error_pdf: "Error loading PDF",
+        home: "Home",
+        desktop: "Desktop",
+        documents: "Documents",
+        downloads: "Downloads",
+        img_viewer: "Image Viewer",
+        video_player: "Video Player",
+        music_player: "Music Player",
+        pdf_viewer: "PDF Viewer",
+        zip_explorer: "ZIP Explorer",
+        code_editor: "Code Editor",
+        web_browser: "Web Browser",
+        external: "External",
+        system_app: "System App (Default)",
+        os_default: "OS Default",
+        text_editor: "Text Editor",
+        bautilus: "Bautilus",
+        app_not_found: "Application not found: "
+    }
+};
+
+function t(key, vars = {}) {
+    let text = translations[currentLang][key] || key;
+    for (const v in vars) {
+        text = text.replace(`{${v}}`, vars[v]);
+    }
+    return text;
+}
+
+function updateUI() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.placeholder = t(el.dataset.i18nPlaceholder);
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        el.title = t(el.dataset.i18nTitle);
+    });
+    document.documentElement.lang = currentLang;
+}
+
 // History
 let historyStack = [];
 let forwardStack = [];
@@ -22,14 +180,14 @@ let pdfScale = 1.3;
 let pdfObserver = null;
 
 // --- OPEN WITH CONFIG ---
-const INTERNAL_VIEWERS = {
-    'image': { name: 'Visor de Imágenes', icon: 'image', exts: ['.jpg','.png','.gif','.webp','.svg'], action: (f,u) => openImage(f,u) },
-    'video': { name: 'Reproductor de Vídeo', icon: 'film', exts: ['.mp4','.webm','.ogv','.mov','.mkv'], action: (f,u) => openVideo(f,u) },
-    'audio': { name: 'Reproductor de Música', icon: 'music', exts: ['.mp3','.wav','.ogg','.m4a'], action: (f,u) => openAudio(f,u) },
-    'pdf': { name: 'Visor PDF', icon: 'file-text', exts: ['.pdf'], action: (f,u) => openPdf(f,u) },
-    'zip': { name: 'Explorador ZIP', icon: 'folder-archive', exts: ['.zip'], action: (f,u) => openZip(f,u) },
-    'code': { name: 'Editor de Código', icon: 'code', exts: ['.js','.json','.html','.css','.ts','.py','.md','.txt'], action: (f,u) => openEditor(f,u) }
-};
+const getInternalViewers = () => ({
+    'image': { name: t('img_viewer'), icon: 'image', exts: ['.jpg','.png','.gif','.webp','.svg'], action: (f,u) => openImage(f,u) },
+    'video': { name: t('video_player'), icon: 'film', exts: ['.mp4','.webm','.ogv','.mov','.mkv'], action: (f,u) => openVideo(f,u) },
+    'audio': { name: t('music_player'), icon: 'music', exts: ['.mp3','.wav','.ogg','.m4a'], action: (f,u) => openAudio(f,u) },
+    'pdf': { name: t('pdf_viewer'), icon: 'file-text', exts: ['.pdf'], action: (f,u) => openPdf(f,u) },
+    'zip': { name: t('zip_explorer'), icon: 'folder-archive', exts: ['.zip'], action: (f,u) => openZip(f,u) },
+    'code': { name: t('code_editor'), icon: 'code', exts: ['.js','.json','.html','.css','.ts','.py','.md','.txt'], action: (f,u) => openEditor(f,u) }
+});
 
 async function getPreferences() {
     return new Promise(resolve => {
@@ -46,6 +204,13 @@ async function savePreference(ext, appId) {
 // --- INIT ---
 async function init() {
     console.log("Bautilus Pro Init...");
+    
+    // Load Language
+    const prefs = await new Promise(resolve => chrome.storage.local.get(['lang'], r => resolve(r)));
+    currentLang = prefs.lang || 'es';
+    document.getElementById('lang-select').value = currentLang;
+    updateUI();
+
     if (window.pdfjsLib) {
         pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
     }
@@ -215,6 +380,22 @@ function selectFile(file, event) {
 }
 
 function updateSelectionUI() {
+    if (APP_MODE === 'save') return; // Save mode doesn't use file selection actions
+
+    if (APP_MODE === 'picker') {
+        const btnSelect = document.getElementById('btn-picker-select');
+        const label = document.getElementById('picker-filename');
+        
+        if (selectedFiles.length === 1 && !selectedFiles[0].isDirectory) {
+            btnSelect.disabled = false;
+            label.textContent = selectedFiles[0].name;
+        } else {
+            btnSelect.disabled = true;
+            label.textContent = selectedFiles.length > 0 ? 'Selecciona un archivo válido' : '';
+        }
+        return;
+    }
+
     const bar = document.getElementById('bottom-bar');
     const label = document.getElementById('selected-file-name');
     const barBm = document.getElementById('bar-bookmark');
@@ -235,7 +416,7 @@ function updateSelectionUI() {
         if (barOpenWith) barOpenWith.classList.remove('hidden');
         if (barBm) barBm.classList.toggle('hidden', !selectedFiles[0].isDirectory);
     } else {
-        label.textContent = `${selectedFiles.length} elementos seleccionados`;
+        label.textContent = `${selectedFiles.length} ${t('items_selected')}`;
         barRename.classList.add('hidden'); // No se puede renombrar múltiple fácilmente
         barOpen.classList.add('hidden');   // Evitar abrir demasiadas ventanas por accidente
         if (barOpenWith) barOpenWith.classList.add('hidden');
@@ -265,7 +446,7 @@ function renderBreadcrumbs() {
         breadcrumb.appendChild(btn);
     };
 
-    addBtn(isWindows ? 'Este Equipo' : 'Raíz', isWindows ? parts[0] + '\\' : '/');
+    addBtn(isWindows ? t('this_pc') : t('root'), isWindows ? parts[0] + '\\' : '/');
 
     let buildPath = isWindows ? '' : '/';
     parts.forEach((part, i) => {
@@ -299,6 +480,16 @@ function getAdwaitaIcon(f) {
 }
 
 function setupGlobalEvents() {
+    document.getElementById('lang-select').onchange = (e) => {
+        currentLang = e.target.value;
+        chrome.storage.local.set({ lang: currentLang }, () => {
+            updateUI();
+            render();
+            loadSystemPaths();
+            loadCustomBookmarks();
+        });
+    };
+
     document.getElementById('btn-back').onclick = () => { if (historyStack.length > 0) { forwardStack.push(currentPath); navigateTo(historyStack.pop(), false); } };
     document.getElementById('btn-forward').onclick = () => { if (forwardStack.length > 0) { historyStack.push(currentPath); navigateTo(forwardStack.pop(), false); } };
     document.getElementById('btn-up').onclick = () => {
@@ -378,7 +569,7 @@ function setupGlobalEvents() {
         if (selectedFiles.length !== 1) return;
         const file = selectedFiles[0];
         const oldPath = file.path;
-        showModal('Renombrar', file.name, async (newName) => {
+        showModal(t('rename'), file.name, async (newName) => {
             const sep = oldPath.includes('\\') ? '\\' : '/';
             const newPath = oldPath.substring(0, oldPath.lastIndexOf(sep) + 1) + newName;
             await fetch(`${API_URL}/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPath, newPath }) });
@@ -388,8 +579,8 @@ function setupGlobalEvents() {
 
     document.getElementById('bar-delete').onclick = async () => {
         if (selectedFiles.length === 0) return;
-        const names = selectedFiles.length === 1 ? `"${selectedFiles[0].name}"` : `${selectedFiles.length} elementos`;
-        if (confirm(`¿Eliminar definitivamente ${names}?`)) {
+        const names = selectedFiles.length === 1 ? `"${selectedFiles[0].name}"` : `${selectedFiles.length} ${t('items_selected')}`;
+        if (confirm(t('delete_confirm', { names }))) {
             const promises = selectedFiles.map(f => 
                 fetch(`${API_URL}/delete`, { 
                     method: 'POST', 
@@ -403,7 +594,7 @@ function setupGlobalEvents() {
     };
 
     document.getElementById('btn-new-folder').onclick = () => {
-        showModal('Nueva Carpeta', 'Carpeta nueva', async (name) => {
+        showModal(t('new_folder'), t('new_folder_name'), async (name) => {
             await fetch(`${API_URL}/create-folder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parentPath: currentPath, name }) });
             navigateTo(currentPath, false);
         });
@@ -462,14 +653,65 @@ function setupGlobalEvents() {
             headers: { 'Content-Type': 'application/json' }, 
             body: JSON.stringify({ targetPath: selectedFile.path, content: monacoEditor.getValue() }) 
         });
-        if (res.ok) alert('Guardado con éxito.');
+        if (res.ok) alert(t('saved_success'));
     };
 
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.file-item') && !e.target.closest('.bottom-bar') && !e.target.closest('.preview-popup') && !e.target.closest('.modal-dialog')) {
+        if (!e.target.closest('.file-item') && !e.target.closest('.bottom-bar') && !e.target.closest('.preview-popup') && !e.target.closest('.modal-dialog') && !e.target.closest('#picker-bar') && !e.target.closest('#save-bar')) {
             document.getElementById('bottom-bar').classList.add('hidden');
         }
     });
+
+    // --- APP MODE HANDLERS ---
+    if (APP_MODE === 'picker') {
+        const bar = document.getElementById('picker-bar');
+        if (bar) bar.classList.remove('hidden');
+        document.getElementById('bottom-bar').classList.add('hidden'); 
+
+        const btnCancel = document.getElementById('btn-picker-cancel');
+        if (btnCancel) btnCancel.onclick = () => window.close();
+
+        const btnSelect = document.getElementById('btn-picker-select');
+        if (btnSelect) {
+            btnSelect.onclick = () => {
+                if (selectedFile && !selectedFile.isDirectory) {
+                    chrome.runtime.sendMessage({
+                        action: 'file_selected_in_picker',
+                        file: {
+                            url: `${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`,
+                            name: selectedFile.name,
+                            type: selectedFile.ext.replace('.', '')
+                        }
+                    });
+                }
+            };
+        }
+    } else if (APP_MODE === 'save') {
+        const bar = document.getElementById('save-bar');
+        if (bar) bar.classList.remove('hidden');
+        document.getElementById('bottom-bar').classList.add('hidden'); 
+
+        const inp = document.getElementById('save-filename-input');
+        if (inp && !inp.value && SAVE_FILENAME_PARAM) inp.value = SAVE_FILENAME_PARAM;
+        
+        const btnCancel = document.getElementById('btn-save-cancel');
+        if (btnCancel) btnCancel.onclick = () => window.close();
+
+        const btnConfirm = document.getElementById('btn-save-confirm');
+        if (btnConfirm) {
+            btnConfirm.onclick = () => {
+                const filename = inp ? inp.value : '';
+                if (!filename) return alert('Por favor, escribe un nombre de archivo.');
+                
+                chrome.runtime.sendMessage({
+                    action: 'save_target_selected',
+                    fileUrl: SAVE_URL_PARAM,
+                    targetPath: currentPath,
+                    filename: filename
+                });
+            };
+        }
+    }
 }
 
 function showModal(title, val, action) {
@@ -496,7 +738,8 @@ async function handleFileOpen(file, forceModal = false) {
     }
 
     // Determine compatible viewers
-    const compatible = Object.entries(INTERNAL_VIEWERS).filter(([id, v]) => v.exts.includes(ext));
+    const viewers = getInternalViewers();
+    const compatible = Object.entries(viewers).filter(([id, v]) => v.exts.includes(ext));
     
     // If only one internal viewer matches and no preference is set, prompt anyway? 
     // Or open directly? Requirement says "ask if not set".
@@ -511,8 +754,9 @@ async function handleFileOpen(file, forceModal = false) {
 }
 
 async function executeOpenWith(appId, file, url) {
-    if (INTERNAL_VIEWERS[appId]) {
-        INTERNAL_VIEWERS[appId].action(file, url);
+    const viewers = getInternalViewers();
+    if (viewers[appId]) {
+        viewers[appId].action(file, url);
     } else if (appId === 'browser') {
         window.open(url, '_blank');
     } else if (appId === 'system') {
@@ -522,7 +766,7 @@ async function executeOpenWith(appId, file, url) {
             body: JSON.stringify({ targetPath: file.path }) 
         });
     } else {
-        alert("Aplicación no encontrada: " + appId);
+        alert(t('app_not_found') + appId);
     }
 }
 
@@ -533,7 +777,7 @@ function showOpenWithModal(file, url, compatibleViewers) {
     const extSpan = document.getElementById('open-with-ext');
     
     modal.classList.remove('hidden');
-    document.getElementById('open-with-filename').textContent = `¿Cómo quieres abrir "${file.name}"?`;
+    document.getElementById('open-with-filename').textContent = `${t('open_with')} "${file.name}"?`;
     extSpan.textContent = file.ext;
     check.checked = false;
     list.innerHTML = '';
@@ -553,17 +797,17 @@ function showOpenWithModal(file, url, compatibleViewers) {
     };
 
     // 1. Internal Viewers
-    compatibleViewers.forEach(([id, v]) => addOption(id, v.name, v.icon, 'Bautilus'));
+    compatibleViewers.forEach(([id, v]) => addOption(id, v.name, v.icon, t('bautilus')));
 
     // 2. Browser Tab
-    addOption('browser', 'Navegador Web', 'globe', 'Externo');
+    addOption('browser', t('web_browser'), 'globe', t('external'));
 
     // 3. System Default
-    addOption('system', 'App del Sistema (Predeterminada)', 'monitor', 'OS Default');
+    addOption('system', t('system_app'), 'monitor', t('os_default'));
 
     // 4. Fallback: Code Editor
     if (!compatibleViewers.find(v => v[0] === 'code')) {
-        addOption('code', 'Editor de Texto', 'file-text', 'Bautilus');
+        addOption('code', t('text_editor'), 'file-text', t('bautilus'));
     }
 
     if (window.lucide) lucide.createIcons();
@@ -618,7 +862,7 @@ async function openZip(file, url) {
     overlay.classList.remove('hidden');
     document.getElementById('zip-title').textContent = file.name;
     const list = document.getElementById('zip-list');
-    list.innerHTML = '<div style="padding:20px;">Analizando archivo...</div>';
+    list.innerHTML = `<div style="padding:20px;">${t('analyzing_zip')}</div>`;
     
     try {
         const res = await fetch(url);
@@ -661,7 +905,7 @@ async function openZip(file, url) {
         document.getElementById('btn-unzip-folder').onclick = () => performUnzip(file.path, true);
 
     } catch (e) {
-        list.innerHTML = `<div style="color:red; padding:20px;">Error al leer ZIP: ${e.message}</div>`;
+        list.innerHTML = `<div style="color:red; padding:20px;">${t('error_zip')}: ${e.message}</div>`;
     }
 }
 
@@ -673,7 +917,7 @@ async function performUnzip(zipPath, createFolder) {
     
     btn1.disabled = true;
     btn2.disabled = true;
-    btn1.textContent = 'Procesando...';
+    btn1.textContent = t('processing');
 
     try {
         const res = await fetch(`${API_URL}/unzip`, {
@@ -687,10 +931,10 @@ async function performUnzip(zipPath, createFolder) {
             navigateTo(currentPath, false);
         } else {
             const err = await res.json();
-            alert(`Error al descomprimir: ${err.error}`);
+            alert(`${t('error_unzip')}: ${err.error}`);
         }
     } catch (e) {
-        alert(`Error de red: ${e.message}`);
+        alert(`${t('network_error')}: ${e.message}`);
     } finally {
         btn1.disabled = false;
         btn2.disabled = false;
@@ -787,7 +1031,7 @@ async function openPdf(file, url) {
     document.getElementById('btn-pdf-tab').onclick = () => window.open(url, '_blank');
     
     const container = document.getElementById('pdf-container');
-    container.innerHTML = '<div style="color:white; padding:20px; font-family:sans-serif;">Cargando visor oficial...</div>';
+    container.innerHTML = `<div style="color:white; padding:20px; font-family:sans-serif;">${t('loading_pdf')}</div>`;
     
     try {
         // Fetch the file as a blob to avoid cross-origin issues within the PDF.js iframe
@@ -812,7 +1056,7 @@ async function openPdf(file, url) {
         // This would require more logic in btn-close-viewer, 
         // but for now, the blob URL is stored in the iframe's src.
     } catch (e) {
-        container.innerHTML = `<div style="color:#ff7b7b; padding:20px;">Error al cargar PDF: ${e.message}</div>`;
+        container.innerHTML = `<div style="color:#ff7b7b; padding:20px;">${t('error_pdf')}: ${e.message}</div>`;
     }
 }
 
@@ -833,10 +1077,10 @@ async function loadSystemPaths() {
             li.onclick = () => navigateTo(path);
             side.appendChild(li);
         };
-        add('Inicio', 'user-home.svg', p.home);
-        add('Escritorio', 'user-desktop.svg', p.desktop);
-        add('Documentos', 'folder-documents.svg', p.documents);
-        add('Descargas', 'folder-download.svg', p.downloads);
+        add(t('home'), 'user-home.svg', p.home);
+        add(t('desktop'), 'user-desktop.svg', p.desktop);
+        add(t('documents'), 'folder-documents.svg', p.documents);
+        add(t('downloads'), 'folder-download.svg', p.downloads);
     } catch(e) { console.error("Error loading system paths:", e); }
 }
 

@@ -6,6 +6,8 @@ const archiver = require('archiver');
 const AdmZip = require('adm-zip');
 const open = require('open');
 const os = require('os');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
 
 const app = express();
 const PORT = 3001;
@@ -192,6 +194,42 @@ app.post('/save', async (req, res) => {
         await fs.writeFile(getSafePath(targetPath), content, 'utf8');
         res.json({ success: true });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Download from URL to local path
+app.post('/download-from-url', async (req, res) => {
+    try {
+        const { url, targetPath, filename } = req.body;
+        if (!url || !targetPath || !filename) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+        
+        // Sanitize filename to prevent directory traversal or invalid chars
+        const safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '-');
+        const saveDir = getSafePath(targetPath);
+        const fullPath = path.join(saveDir, safeFilename);
+        
+        console.log(`Downloading ${url} -> ${fullPath}`);
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+        }
+        
+        if (!response.body) {
+            throw new Error("No response body");
+        }
+        
+        const fileStream = fs.createWriteStream(fullPath);
+        await pipeline(Readable.fromWeb(response.body), fileStream);
+        
+        console.log("Download complete.");
+        res.json({ success: true, path: fullPath });
+        
+    } catch (error) {
+        console.error("Download error:", error);
         res.status(500).json({ error: error.message });
     }
 });
