@@ -477,6 +477,9 @@ function getAdwaitaIcon(f) {
         if (n.includes('desk')) return 'icons/adwaita/user-desktop.svg';
         if (n.includes('doc')) return 'icons/adwaita/folder-documents.svg';
         if (n.includes('down')) return 'icons/adwaita/folder-download.svg';
+        if (n.includes('music')) return 'icons/adwaita/folder-music.svg';
+        if (n.includes('pict') || n.includes('imag')) return 'icons/adwaita/folder-pictures.svg';
+        if (n.includes('video') || n.includes('film')) return 'icons/adwaita/folder-videos.svg';
         return 'icons/adwaita/folder.svg';
     }
     const e = f.ext.toLowerCase();
@@ -1091,6 +1094,9 @@ async function loadSystemPaths() {
         add(t('desktop'), 'user-desktop.svg', p.desktop);
         add(t('documents'), 'folder-documents.svg', p.documents);
         add(t('downloads'), 'folder-download.svg', p.downloads);
+        if (p.music) add(t('music_player'), 'folder-music.svg', p.music);
+        if (p.pictures) add(t('image'), 'folder-pictures.svg', p.pictures);
+        if (p.videos) add(t('video'), 'folder-videos.svg', p.videos);
     } catch(e) { console.error("Error loading system paths:", e); }
 }
 
