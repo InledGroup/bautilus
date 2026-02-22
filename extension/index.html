@@ -49,6 +49,7 @@
                         <option value="es">ES</option>
                         <option value="en">EN</option>
                     </select>
+                    <button id="btn-check-updates" class="btn-icon" title="Comprobar actualizaciones" data-i18n-title="check_updates"><i data-lucide="refresh-cw"></i></button>
                     <button id="btn-view-toggle" class="btn-icon"><i data-lucide="layout-grid"></i></button>
                     <button id="btn-new-folder" class="btn-icon"><i data-lucide="folder-plus"></i></button>
                 </div>
@@ -61,6 +62,21 @@
                     <div style="flex:1;" data-i18n="modified">Modificado</div>
                 </div>
                 <div id="file-view" class="file-view grid-view"></div>
+            </div>
+
+            <!-- Update Notification Modal -->
+            <div id="update-overlay" class="preview-overlay hidden">
+                <div class="preview-popup modal-dialog" style="text-align: center; padding: 30px;">
+                    <div style="margin-bottom: 20px;">
+                        <i data-lucide="info" size="48" style="color: #3584e4;"></i>
+                    </div>
+                    <h2 data-i18n="update_available">¡Nueva actualización disponible!</h2>
+                    <p id="update-text" style="margin: 15px 0; color: var(--text-muted);"></p>
+                    <div class="modal-actions" style="justify-content: center; margin-top: 25px;">
+                        <button id="btn-update-later" class="btn-flat" data-i18n="later">Más tarde</button>
+                        <a id="btn-update-now" href="#" target="_blank" class="btn-flat primary" style="text-decoration: none;" data-i18n="update_now">Actualizar ahora</a>
+                    </div>
+                </div>
             </div>
 
             <!-- Action Bar -->

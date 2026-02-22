@@ -83,7 +83,15 @@ const translations = {
         name_label: "Nombre:",
         save_here: "Guardar Aquí",
         select_valid_file: "Selecciona un archivo válido",
-        error_no_filename: "Por favor, escribe un nombre de archivo."
+        error_no_filename: "Por favor, escribe un nombre de archivo.",
+        check_updates: "Comprobar actualizaciones",
+        update_available: "¡Nueva actualización disponible!",
+        later: "Más tarde",
+        update_now: "Actualizar ahora",
+        no_update_found: "Ya tienes la última versión instalada.",
+        up_to_date: "Bautilus está actualizado.",
+        is_available: "está disponible",
+        current_version: "Tu versión:"
     },
     en: {
         places: "Places",
@@ -152,7 +160,13 @@ const translations = {
         name_label: "Name:",
         save_here: "Save Here",
         select_valid_file: "Select a valid file",
-        error_no_filename: "Please write a filename."
+        error_no_filename: "Please write a filename.",
+        check_updates: "Check for updates",
+        update_available: "New update available!",
+        later: "Later",
+        update_now: "Update now",
+        no_update_found: "You already have the latest version.",
+        up_to_date: "Bautilus is up to date."
     }
 };
 
@@ -243,6 +257,35 @@ async function init() {
     await loadSystemPaths();
     await loadCustomBookmarks();
     await navigateTo(''); 
+
+    // Check for updates from storage
+    chrome.storage.local.get(['updateAvailable'], (r) => {
+        if (r.updateAvailable) {
+            showUpdateModal(r.updateAvailable);
+        }
+    });
+}
+
+function showUpdateModal(updateEntry) {
+    const overlay = document.getElementById('update-overlay');
+    const text = document.getElementById('update-text');
+    const btnNow = document.getElementById('btn-update-now');
+    const btnLater = document.getElementById('btn-update-later');
+
+    const currentVersion = chrome.runtime.getManifest().version;
+    // updateEntry.id looks like "bautilus-v1.0"
+    const newVersion = updateEntry.id.split('-v')[1] || updateEntry.id;
+
+    text.textContent = `${t('bautilus')} ${newVersion} ${t('is_available') || '(v'+newVersion+')'}. ${t('current_version') || 'Tu versión:'} ${currentVersion}`;
+    btnNow.href = updateEntry.url;
+    
+    overlay.classList.remove('hidden');
+    
+    btnLater.onclick = () => overlay.classList.add('hidden');
+    btnNow.onclick = () => {
+        // We can keep it open or close it
+        overlay.classList.add('hidden');
+    };
 }
 
 async function navigateTo(path, addToHistory = true) {
@@ -516,6 +559,20 @@ function setupGlobalEvents() {
     document.getElementById('btn-view-toggle').onclick = () => { viewMode = viewMode === 'grid' ? 'list' : 'grid'; render(); };
     document.getElementById('search-input').oninput = () => render();
     document.getElementById('sort-select').onchange = (e) => { sortBy = e.target.value; render(); };
+
+    document.getElementById('btn-check-updates').onclick = () => {
+        const btn = document.getElementById('btn-check-updates');
+        btn.classList.add('spinning'); // CSS class to animate if wanted
+        
+        chrome.runtime.sendMessage({ action: 'check_updates_manual' }, (response) => {
+            btn.classList.remove('spinning');
+            if (response && response.updateAvailable) {
+                showUpdateModal(response.updateAvailable);
+            } else {
+                alert(t('up_to_date'));
+            }
+        });
+    };
 
     // Action Bar
     document.getElementById('bar-open').onclick = () => selectedFile && handleFileOpen(selectedFile);

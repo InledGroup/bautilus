@@ -4,9 +4,58 @@ chrome.action.onClicked.addListener((tab) => {
     });
 });
 
+const EXT_NAME = 'bautilus';
+const UPDATE_URL = 'https://extupdater.inled.es/api/updates.json';
+
+async function checkUpdates() {
+    try {
+        // Cache busting to ensure we get the latest data
+        const response = await fetch(`${UPDATE_URL}?t=${Date.now()}`);
+        const updates = await response.json();
+        const version = chrome.runtime.getManifest().version;
+        const currentId = `${EXT_NAME}-v${version}`;
+        
+        console.log(`Checking updates for: ${currentId}`);
+        
+        const updateEntry = updates.find(u => u.id === currentId);
+        
+        if (updateEntry) {
+            console.log('Update found:', updateEntry);
+            await chrome.storage.local.set({ updateAvailable: updateEntry });
+        } else {
+            console.log('No update entry found for this version.');
+            await chrome.storage.local.remove('updateAvailable');
+        }
+    } catch (error) {
+        console.error('Error checking updates:', error);
+    }
+}
+
+// Check every 24 hours
+chrome.alarms.create('dailyUpdateCheck', { periodInMinutes: 1440 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'dailyUpdateCheck') {
+        checkUpdates();
+    }
+});
+
+// Initial check on startup
+chrome.runtime.onStartup.addListener(checkUpdates);
+chrome.runtime.onInstalled.addListener(checkUpdates);
+
 let pickerRequestTabId = null;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    // 0. Manual Update Check
+    if (msg.action === 'check_updates_manual') {
+        (async () => {
+            await checkUpdates();
+            const r = await chrome.storage.local.get(['updateAvailable']);
+            sendResponse({ updateAvailable: r.updateAvailable });
+        })();
+        return true; 
+    }
+
     // 1. Upload Request from Content Script
     if (msg.action === 'open_picker') {
         pickerRequestTabId = sender.tab.id;
