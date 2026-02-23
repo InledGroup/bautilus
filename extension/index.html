@@ -50,6 +50,7 @@
                         <option value="en">EN</option>
                     </select>
                     <button id="btn-check-updates" class="btn-icon" title="Comprobar actualizaciones" data-i18n-title="check_updates"><i data-lucide="refresh-cw"></i></button>
+                    <button id="btn-settings" class="btn-icon" title="Configuración" data-i18n-title="settings"><i data-lucide="settings"></i></button>
                     <button id="btn-view-toggle" class="btn-icon"><i data-lucide="layout-grid"></i></button>
                     <button id="btn-new-folder" class="btn-icon"><i data-lucide="folder-plus"></i></button>
                 </div>
@@ -228,6 +229,57 @@
                 <div class="video-wrapper">
                     <video id="video-player" playsinline controls></video>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-overlay" class="preview-overlay hidden">
+        <div class="preview-popup modal-dialog" style="width: 450px;">
+            <div class="popup-header">
+                <span class="popup-title" data-i18n="settings">Configuración</span>
+                <button class="btn-close-viewer btn-icon"><i data-lucide="x"></i></button>
+            </div>
+            <div style="padding: 20px; max-height: 80vh; overflow-y: auto;">
+                
+                <!-- EXTENSION SETTINGS -->
+                <div style="margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 15px;">
+                    <h4 style="margin-bottom:10px; color:#3584e4;" data-i18n="ext_connection">Conexión de la Extensión</h4>
+                    <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">Configura a qué dirección debe conectarse esta extensión.</p>
+                    
+                    <div style="margin-bottom: 10px;">
+                        <label style="display:block; margin-bottom:5px; font-size:12px;" data-i18n="backend_url">URL del Backend</label>
+                        <div style="display:flex; gap:8px;">
+                            <input type="text" id="ext-api-url" class="search-entry" style="flex:1; color: var(--text-main); background: var(--bg-main); border: 1px solid var(--border);" placeholder="http://localhost:3001">
+                            <button id="btn-save-ext-config" class="btn-flat primary" style="padding: 5px 15px;" data-i18n="apply">Aplicar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SERVER SETTINGS (Requires connection) -->
+                <div id="server-settings-section">
+                    <h4 style="margin-bottom:10px; color:#3584e4;" data-i18n="server_config">Configuración del Servidor</h4>
+                    <p style="font-size:11px; color:var(--text-muted); margin-bottom:10px;">Estos cambios afectan al proceso del servidor en tu máquina.</p>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; margin-bottom:5px; font-size:12px;" data-i18n="server_interface">Interfaz (IP)</label>
+                        <input type="text" id="settings-interface" class="search-entry" style="width:100%; color: var(--text-main); background: var(--bg-main); border: 1px solid var(--border);">
+                        <small style="color:#ff7b7b; font-size:11px;">"localhost" para local. "0.0.0.0" para red (ACCESO TOTAL).</small>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; margin-bottom:5px; font-size:12px;" data-i18n="server_port">Puerto</label>
+                        <input type="number" id="settings-port" class="search-entry" style="width:100%; color: var(--text-main); background: var(--bg-main); border: 1px solid var(--border);">
+                    </div>
+                    <div style="margin-top:20px; text-align:right;">
+                        <button id="btn-save-settings" class="btn-flat primary" data-i18n="save_server">Guardar en Servidor</button>
+                    </div>
+                </div>
+
+                <div id="server-connection-error" class="hidden" style="padding: 15px; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff7b7b; font-size: 12px; margin-top: 10px;">
+                    <i data-lucide="alert-circle" size="14" style="vertical-align: middle; margin-right: 5px;"></i>
+                    No se pudo conectar con el servidor. Verifica la URL de arriba.
+                </div>
+
             </div>
         </div>
     </div>

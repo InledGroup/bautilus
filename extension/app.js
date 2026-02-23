@@ -1,4 +1,35 @@
-const API_URL = 'http://localhost:3001';
+let API_URL = 'http://localhost:3001';
+
+// Use origin if running as a web app from the backend
+if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+    API_URL = window.location.origin;
+}
+
+// Storage polyfill for web environment
+const storage = {
+    get: async (keys) => {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            return new Promise(resolve => chrome.storage.local.get(keys, resolve));
+        } else {
+            const res = {};
+            for (const k of (Array.isArray(keys) ? keys : [keys])) {
+                const val = localStorage.getItem(k);
+                res[k] = val ? JSON.parse(val) : undefined;
+            }
+            return res;
+        }
+    },
+    set: async (obj) => {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            return new Promise(resolve => chrome.storage.local.set(obj, resolve));
+        } else {
+            for (const k in obj) {
+                localStorage.setItem(k, JSON.stringify(obj[k]));
+            }
+        }
+    }
+};
+
 let currentPath = '';
 let selectedFile = null;
 let clipboard = { op: null, path: null }; 
@@ -91,7 +122,17 @@ const translations = {
         no_update_found: "Ya tienes la última versión instalada.",
         up_to_date: "Bautilus está actualizado.",
         is_available: "está disponible",
-        current_version: "Tu versión:"
+        current_version: "Tu versión:",
+        settings: "Configuración",
+        server_interface: "Interfaz (IP)",
+        server_port: "Puerto",
+        restart_warning: "Los cambios se guardarán. Es posible que el servidor necesite reiniciarse.",
+        ext_connection: "Conexión de la Extensión",
+        backend_url: "URL del Backend",
+        server_config: "Configuración del Servidor",
+        apply: "Aplicar",
+        save_server: "Guardar en Servidor",
+        connection_error: "Error de conexión con el servidor"
     },
     en: {
         places: "Places",
@@ -165,8 +206,23 @@ const translations = {
         update_available: "New update available!",
         later: "Later",
         update_now: "Update now",
-        no_update_found: "You already have the latest version.",
-        up_to_date: "Bautilus is up to date."
+                no_update_found: "You already have the latest version.",
+                up_to_date: "Bautilus is up to date.",
+                settings: "Settings",
+                server_interface: "Interface (IP)",
+                server_port: "Port",
+                restart_warning: "Changes will be saved. The server may need to restart.",
+                ext_connection: "Extension Connection",
+                backend_url: "Backend URL",
+                server_config: "Server Configuration",
+                apply: "Apply",
+                save_server: "Save to Server",
+                connection_error: "Connection error with server"
+        ,
+        settings: "Settings",
+        server_interface: "Interface (IP)",
+        server_port: "Port",
+        restart_warning: "Changes will be saved. The server may need to restart."
     }
 };
 
@@ -214,37 +270,47 @@ const getInternalViewers = () => ({
 });
 
 async function getPreferences() {
-    return new Promise(resolve => {
-        chrome.storage.local.get(['openWithPrefs'], (r) => resolve(r.openWithPrefs || {}));
-    });
+    const r = await storage.get(['openWithPrefs']);
+    return r.openWithPrefs || {};
 }
 
 async function savePreference(ext, appId) {
     const prefs = await getPreferences();
     prefs[ext] = appId;
-    chrome.storage.local.set({ openWithPrefs: prefs });
+    await storage.set({ openWithPrefs: prefs });
 }
 
 // --- INIT ---
 async function init() {
     console.log("Bautilus Pro Init...");
     
+    // Load Server Config from Storage (if extension)
+    const srv = await storage.get(['serverUrl']);
+    if (srv.serverUrl) API_URL = srv.serverUrl;
+
     // Load Language
-    const prefs = await new Promise(resolve => chrome.storage.local.get(['lang'], r => resolve(r)));
+    const prefs = await storage.get(['lang']);
     currentLang = prefs.lang || 'es';
     document.getElementById('lang-select').value = currentLang;
     updateUI();
 
+    // Check for "setup" mode in URL
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('setup')) {
+        openSettingsModal();
+    }
+
     if (window.pdfjsLib) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = typeof chrome !== 'undefined' && chrome.runtime ? chrome.runtime.getURL('pdf.worker.min.js') : 'pdf.worker.min.js';
     }
 
     // Configure Monaco Environment for Workers
     window.MonacoEnvironment = {
         getWorkerUrl: function(workerId, label) {
+            const baseUrl = typeof chrome !== 'undefined' && chrome.runtime ? chrome.runtime.getURL('vs') : 'vs';
             return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
-                self.MonacoEnvironment = { baseUrl: '${chrome.runtime.getURL('vs')}' };
-                importScripts('${chrome.runtime.getURL('vs/base/worker/workerMain.js')}');
+                self.MonacoEnvironment = { baseUrl: '${baseUrl}' };
+                importScripts('${baseUrl}/base/worker/workerMain.js');
             `)}`;
         }
     };
@@ -259,11 +325,10 @@ async function init() {
     await navigateTo(''); 
 
     // Check for updates from storage
-    chrome.storage.local.get(['updateAvailable'], (r) => {
-        if (r.updateAvailable) {
-            showUpdateModal(r.updateAvailable);
-        }
-    });
+    const upd = await storage.get(['updateAvailable']);
+    if (upd.updateAvailable) {
+        showUpdateModal(upd.updateAvailable);
+    }
 }
 
 function showUpdateModal(updateEntry) {
@@ -272,7 +337,7 @@ function showUpdateModal(updateEntry) {
     const btnNow = document.getElementById('btn-update-now');
     const btnLater = document.getElementById('btn-update-later');
 
-    const currentVersion = chrome.runtime.getManifest().version;
+    const currentVersion = typeof chrome !== 'undefined' && chrome.runtime ? chrome.runtime.getManifest().version : 'web';
     // updateEntry.id looks like "bautilus-v1.0"
     const newVersion = updateEntry.id.split('-v')[1] || updateEntry.id;
 
@@ -560,18 +625,57 @@ function setupGlobalEvents() {
     document.getElementById('search-input').oninput = () => render();
     document.getElementById('sort-select').onchange = (e) => { sortBy = e.target.value; render(); };
 
+    document.getElementById('btn-settings').onclick = () => openSettingsModal();
+
+    document.getElementById('btn-save-ext-config').onclick = async () => {
+        const newUrl = document.getElementById('ext-api-url').value;
+        if (newUrl) {
+            API_URL = newUrl;
+            await storage.set({ serverUrl: API_URL });
+            alert(t('saved_success'));
+            openSettingsModal(); // Refresh to check connection
+        }
+    };
+
+    document.getElementById('btn-save-settings').onclick = async () => {
+        const interfaceVal = document.getElementById('settings-interface').value;
+        const portVal = document.getElementById('settings-port').value;
+        
+        try {
+            const res = await fetch(`${API_URL}/set-config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ interface: interfaceVal, port: portVal })
+            });
+            
+            if (res.ok) {
+                alert(t('restart_warning'));
+                document.getElementById('settings-overlay').classList.add('hidden');
+            } else {
+                alert('Error saving settings');
+            }
+        } catch (e) {
+            alert(t('connection_error') + ': ' + e.message);
+        }
+    };
+
     document.getElementById('btn-check-updates').onclick = () => {
         const btn = document.getElementById('btn-check-updates');
         btn.classList.add('spinning'); // CSS class to animate if wanted
         
-        chrome.runtime.sendMessage({ action: 'check_updates_manual' }, (response) => {
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+            chrome.runtime.sendMessage({ action: 'check_updates_manual' }, (response) => {
+                btn.classList.remove('spinning');
+                if (response && response.updateAvailable) {
+                    showUpdateModal(response.updateAvailable);
+                } else {
+                    alert(t('up_to_date'));
+                }
+            });
+        } else {
             btn.classList.remove('spinning');
-            if (response && response.updateAvailable) {
-                showUpdateModal(response.updateAvailable);
-            } else {
-                alert(t('up_to_date'));
-            }
-        });
+            alert(t('up_to_date'));
+        }
     };
 
     // Action Bar
@@ -713,6 +817,9 @@ function setupGlobalEvents() {
                 }
                 container.innerHTML = '';
             }
+            if (overlay.id === 'settings-overlay') {
+                // No extra cleanup
+            }
         };
     });
 
@@ -745,14 +852,19 @@ function setupGlobalEvents() {
         if (btnSelect) {
             btnSelect.onclick = () => {
                 if (selectedFile && !selectedFile.isDirectory) {
-                    chrome.runtime.sendMessage({
-                        action: 'file_selected_in_picker',
-                        file: {
-                            url: `${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`,
-                            name: selectedFile.name,
-                            type: selectedFile.ext.replace('.', '')
-                        }
-                    });
+                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({
+                            action: 'file_selected_in_picker',
+                            file: {
+                                url: `${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`,
+                                name: selectedFile.name,
+                                type: selectedFile.ext.replace('.', '')
+                            }
+                        });
+                    } else {
+                        // Web app mode: Download instead?
+                        window.open(`${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`, '_blank');
+                    }
                 }
             };
         }
@@ -773,12 +885,21 @@ function setupGlobalEvents() {
                 const filename = inp ? inp.value : '';
                 if (!filename) return alert(t('error_no_filename'));
                 
-                chrome.runtime.sendMessage({
-                    action: 'save_target_selected',
-                    fileUrl: SAVE_URL_PARAM,
-                    targetPath: currentPath,
-                    filename: filename
-                });
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage({
+                        action: 'save_target_selected',
+                        fileUrl: SAVE_URL_PARAM,
+                        targetPath: currentPath,
+                        filename: filename
+                    });
+                } else {
+                    // Web app mode: Use server to download
+                    fetch(`${API_URL}/download-from-url`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: SAVE_URL_PARAM, targetPath: currentPath, filename })
+                    }).then(r => r.ok ? alert(t('saved_success')) : alert('Error downloading file'));
+                }
             };
         }
     }
@@ -793,6 +914,32 @@ function showModal(title, val, action) {
     input.focus();
     document.getElementById('btn-modal-confirm').onclick = async () => { await action(input.value); overlay.classList.add('hidden'); };
     document.getElementById('btn-modal-cancel').onclick = () => overlay.classList.add('hidden');
+}
+
+async function openSettingsModal() {
+    const overlay = document.getElementById('settings-overlay');
+    const srvSection = document.getElementById('server-settings-section');
+    const errorBox = document.getElementById('server-connection-error');
+    
+    document.getElementById('ext-api-url').value = API_URL;
+    overlay.classList.remove('hidden');
+    
+    try {
+        const res = await fetch(`${API_URL}/get-config`);
+        if (res.ok) {
+            const config = await res.json();
+            document.getElementById('settings-interface').value = config.interface;
+            document.getElementById('settings-port').value = config.port;
+            srvSection.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+        } else {
+            throw new Error();
+        }
+    } catch (e) { 
+        console.error('Error fetching settings:', e); 
+        srvSection.classList.add('hidden');
+        errorBox.classList.remove('hidden');
+    }
 }
 
 async function handleFileOpen(file, forceModal = false) {

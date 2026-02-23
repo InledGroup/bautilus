@@ -10,15 +10,91 @@ const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
 const app = express();
-const PORT = 3001;
 
-app.use(cors());
-app.use(express.json());
+const CONFIG_DIR = path.join(os.homedir(), '.bautilus');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
-// Base path defaults to user home directory
-const ROOT = os.homedir();
+// Default values
+let PORT = 3001;
+let INTERFACE = 'localhost';
 
-// Get standard system paths
+async function loadConfig() {
+    try {
+        if (await fs.pathExists(CONFIG_FILE)) {
+            const config = await fs.readJson(CONFIG_FILE);
+            if (config.port) PORT = config.port;
+            if (config.interface) INTERFACE = config.interface;
+            return config;
+        }
+    } catch (err) {
+        console.error('Error loading config:', err);
+    }
+    return null;
+}
+
+async function saveConfig(config) {
+    try {
+        await fs.ensureDir(CONFIG_DIR);
+        await fs.writeJson(CONFIG_FILE, config, { spaces: 2 });
+    } catch (err) {
+        console.error('Error saving config:', err);
+    }
+}
+
+// Parse arguments
+const args = process.argv.slice(2);
+const getArgValue = (flag) => {
+    const arg = args.find(a => a.startsWith(flag));
+    return arg ? arg.split(':')[1] : null;
+};
+
+async function initServer() {
+    const config = await loadConfig();
+    
+    const argPort = getArgValue('--port');
+    const argInterface = getArgValue('--interface');
+
+    let needsConfig = !config && !argPort && !argInterface;
+
+    if (argPort) PORT = parseInt(argPort);
+    if (argInterface) INTERFACE = argInterface;
+
+    // If flags provided, save them
+    if (argPort || argInterface) {
+        await saveConfig({ port: PORT, interface: INTERFACE });
+    }
+
+    app.use(cors());
+    app.use(express.json());
+
+    // Serve extension folder as static files
+    app.use(express.static(path.join(__dirname, '../extension')));
+
+    // Base path defaults to user home directory
+    const ROOT = os.homedir();
+
+    // Config endpoints
+    app.get('/get-config', (req, res) => {
+        res.json({ port: PORT, interface: INTERFACE, needsConfig });
+    });
+
+    app.post('/set-config', async (req, res) => {
+        try {
+            const { port, interface: newInterface } = req.body;
+            if (port) PORT = parseInt(port);
+            if (newInterface) INTERFACE = newInterface;
+            await saveConfig({ port: PORT, interface: INTERFACE });
+            res.json({ success: true });
+            
+            // Note: In a real world, changing port would require a restart.
+            // For now, we just save it. The user will have to restart the server.
+            console.log(`Config updated: ${INTERFACE}:${PORT}. Restart recommended.`);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Get standard system paths
 app.get('/system-paths', (req, res) => {
     res.json({
         home: ROOT,
@@ -194,42 +270,51 @@ app.post('/save', async (req, res) => {
 });
 
 // Download from URL to local path
-app.post('/download-from-url', async (req, res) => {
-    try {
-        const { url, targetPath, filename } = req.body;
-        if (!url || !targetPath || !filename) {
-            return res.status(400).json({ error: 'Missing parameters' });
+    app.post('/download-from-url', async (req, res) => {
+        try {
+            const { url, targetPath, filename } = req.body;
+            if (!url || !targetPath || !filename) {
+                return res.status(400).json({ error: 'Missing parameters' });
+            }
+            
+            // Sanitize filename to prevent directory traversal or invalid chars
+            const safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '-');
+            const saveDir = getSafePath(targetPath);
+            const fullPath = path.join(saveDir, safeFilename);
+            
+            console.log(`Downloading ${url} -> ${fullPath}`);
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+            }
+            
+            if (!response.body) {
+                throw new Error("No response body");
+            }
+            
+            const fileStream = fs.createWriteStream(fullPath);
+            await pipeline(Readable.fromWeb(response.body), fileStream);
+            
+            console.log("Download complete.");
+            res.json({ success: true, path: fullPath });
+            
+        } catch (error) {
+            console.error("Download error:", error);
+            res.status(500).json({ error: error.message });
         }
-        
-        // Sanitize filename to prevent directory traversal or invalid chars
-        const safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '-');
-        const saveDir = getSafePath(targetPath);
-        const fullPath = path.join(saveDir, safeFilename);
-        
-        console.log(`Downloading ${url} -> ${fullPath}`);
-        
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
-        }
-        
-        if (!response.body) {
-            throw new Error("No response body");
-        }
-        
-        const fileStream = fs.createWriteStream(fullPath);
-        await pipeline(Readable.fromWeb(response.body), fileStream);
-        
-        console.log("Download complete.");
-        res.json({ success: true, path: fullPath });
-        
-    } catch (error) {
-        console.error("Download error:", error);
-        res.status(500).json({ error: error.message });
-    }
-});
+    });
 
-app.listen(PORT, () => {
-    console.log(`Bautilus Backend running on http://localhost:${PORT}`);
-    console.log(`Root access enabled at: ${ROOT}`);
-});
+    app.listen(PORT, INTERFACE, () => {
+        const url = `http://${INTERFACE === '0.0.0.0' ? 'localhost' : INTERFACE}:${PORT}`;
+        console.log(`Bautilus Backend running on ${url}`);
+        console.log(`Root access enabled at: ${ROOT}`);
+        
+        if (needsConfig) {
+            console.log('No configuration found. Opening visual configurator...');
+            open(`${url}/index.html?setup=1`);
+        }
+    });
+}
+
+initServer();
