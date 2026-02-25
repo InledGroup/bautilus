@@ -51,6 +51,21 @@
                     </select>
                     <button id="btn-check-updates" class="btn-icon" title="Comprobar actualizaciones" data-i18n-title="check_updates"><i data-lucide="refresh-cw"></i></button>
                     <button id="btn-settings" class="btn-icon" title="Configuración" data-i18n-title="settings"><i data-lucide="settings"></i></button>
+                    <div class="download-container">
+                        <button id="btn-downloads" class="btn-icon" title="Descargas" data-i18n-title="downloads">
+                            <i data-lucide="download"></i>
+                            <span id="download-badge" class="badge hidden">0</span>
+                        </button>
+                        <div id="downloads-popover" class="downloads-popover hidden">
+                            <div class="popover-header">
+                                <span data-i18n="downloads">Descargas</span>
+                                <button id="btn-clear-downloads" class="btn-icon-small"><i data-lucide="trash-2" size="14"></i></button>
+                            </div>
+                            <div id="downloads-list" class="downloads-list">
+                                <!-- Downloads items injected here -->
+                            </div>
+                        </div>
+                    </div>
                     <button id="btn-view-toggle" class="btn-icon"><i data-lucide="layout-grid"></i></button>
                     <button id="btn-new-folder" class="btn-icon"><i data-lucide="folder-plus"></i></button>
                 </div>

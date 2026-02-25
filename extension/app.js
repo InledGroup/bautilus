@@ -378,8 +378,10 @@ async function navigateTo(path, addToHistory = true) {
 function updateNavButtons() {
     document.getElementById('btn-back').disabled = historyStack.length === 0;
     document.getElementById('btn-forward').disabled = forwardStack.length === 0;
-    const isRoot = !currentPath || currentPath === '/' || (currentPath.includes(':') && currentPath.length <= 3);
-    document.getElementById('btn-up').disabled = isRoot;
+    
+    // In Windows, we can go "up" from C:\ to "This PC" (root)
+    const isAbsoluteRoot = currentPath === 'root' || (!currentPath.includes(':') && currentPath === '/');
+    document.getElementById('btn-up').disabled = isAbsoluteRoot;
 }
 
 // --- RENDER ---
@@ -412,9 +414,13 @@ function render() {
         const dateStr = new Date(file.mtime).toLocaleDateString();
         const isVideo = ['.mp4','.webm','.ogv','.mov','.mkv'].includes(file.ext.toLowerCase());
 
+        const isDrive = currentPath === 'root';
+        const iconSrc = isDrive ? 'icons/adwaita/user-home.svg' : getAdwaitaIcon(file);
+        const iconStyle = isDrive ? 'style="filter: hue-rotate(200deg)"' : '';
+
         item.innerHTML = `
             <div class="thumb-container">
-                <img src="${getAdwaitaIcon(file)}" class="icon-img">
+                <img src="${iconSrc}" class="icon-img" ${iconStyle}>
                 ${isVideo ? '<div class="video-badge"><i data-lucide="play" size="18"></i></div>' : ''}
             </div>
             <div class="name">${file.name}</div>
@@ -553,6 +559,16 @@ function renderSelectionState() {
 function renderBreadcrumbs() {
     const breadcrumb = document.getElementById('breadcrumb');
     breadcrumb.innerHTML = '';
+    
+    if (currentPath === 'root') {
+        const btn = document.createElement('button');
+        btn.className = 'path-button';
+        btn.textContent = t('this_pc');
+        btn.onclick = () => navigateTo('root');
+        breadcrumb.appendChild(btn);
+        return;
+    }
+
     const isWindows = currentPath.includes(':');
     const parts = currentPath.split(/[\\\/]/).filter(p => p !== '');
     
@@ -564,17 +580,31 @@ function renderBreadcrumbs() {
         breadcrumb.appendChild(btn);
     };
 
-    addBtn(isWindows ? t('this_pc') : t('root'), isWindows ? parts[0] + '\\' : '/');
-
-    let buildPath = isWindows ? '' : '/';
-    parts.forEach((part, i) => {
-        if (isWindows && i === 0) { buildPath = part + '\\'; return; }
+    const addSep = () => {
         const sep = document.createElement('span');
         sep.innerHTML = '<i data-lucide="chevron-right" width="12" style="opacity:0.5; margin:0 2px;"></i>';
         breadcrumb.appendChild(sep);
-        buildPath = (buildPath.endsWith('\\') || buildPath.endsWith('/')) ? buildPath + part : buildPath + (isWindows ? '\\' : '/') + part;
-        const target = buildPath;
-        addBtn(part, target);
+    };
+
+    if (isWindows) {
+        addBtn(t('this_pc'), 'root');
+        addSep();
+    } else {
+        addBtn(t('root'), '/');
+    }
+
+    let buildPath = isWindows ? '' : '/';
+    parts.forEach((part, i) => {
+        if (i > 0 || !isWindows) addSep();
+        
+        if (isWindows && i === 0) {
+            buildPath = part.endsWith(':') ? part + '\\' : part;
+        } else {
+            const separator = isWindows ? '\\' : '/';
+            buildPath = buildPath.endsWith(separator) ? buildPath + part : buildPath + separator + part;
+        }
+        
+        addBtn(part, buildPath);
     });
     if (window.lucide) lucide.createIcons();
 }
@@ -614,16 +644,47 @@ function setupGlobalEvents() {
     document.getElementById('btn-back').onclick = () => { if (historyStack.length > 0) { forwardStack.push(currentPath); navigateTo(historyStack.pop(), false); } };
     document.getElementById('btn-forward').onclick = () => { if (forwardStack.length > 0) { historyStack.push(currentPath); navigateTo(forwardStack.pop(), false); } };
     document.getElementById('btn-up').onclick = () => {
+        if (!currentPath || currentPath === 'root') return;
+        
+        const isWindows = currentPath.includes(':');
+        // If we are at C:\ or similar, go to virtual root
+        if (isWindows && currentPath.length <= 3) {
+            navigateTo('root');
+            return;
+        }
+
         const lastSep = Math.max(currentPath.lastIndexOf('/'), currentPath.lastIndexOf('\\'));
-        if (lastSep === -1) return;
-        let parent = currentPath.substring(0, lastSep) || (currentPath.includes(':') ? currentPath.split('\\')[0] + '\\' : '/');
-        if (parent.endsWith(':')) parent += '\\';
+        if (lastSep === -1) {
+            navigateTo(isWindows ? 'root' : '/');
+            return;
+        }
+
+        let parent = currentPath.substring(0, lastSep);
+        if (parent === '' || (isWindows && parent.endsWith(':'))) {
+            parent = isWindows ? parent + '\\' : '/';
+        }
         navigateTo(parent);
     };
     
     document.getElementById('btn-view-toggle').onclick = () => { viewMode = viewMode === 'grid' ? 'list' : 'grid'; render(); };
     document.getElementById('search-input').oninput = () => render();
     document.getElementById('sort-select').onchange = (e) => { sortBy = e.target.value; render(); };
+
+    document.getElementById('btn-downloads').onclick = (e) => {
+        e.stopPropagation();
+        document.getElementById('downloads-popover').classList.toggle('hidden');
+        if (!document.getElementById('downloads-popover').classList.contains('hidden')) {
+            updateDownloads();
+        }
+    };
+
+    document.getElementById('btn-clear-downloads').onclick = async (e) => {
+        e.stopPropagation();
+        try {
+            await fetch(`${API_URL}/clear-downloads`, { method: 'POST' });
+            updateDownloads();
+        } catch (e) { console.error("Error clearing downloads:", e); }
+    };
 
     document.getElementById('btn-settings').onclick = () => openSettingsModal();
 
@@ -941,6 +1002,74 @@ async function openSettingsModal() {
         errorBox.classList.remove('hidden');
     }
 }
+
+async function updateDownloads() {
+    try {
+        const res = await fetch(`${API_URL}/downloads`);
+        if (!res.ok) throw new Error();
+        
+        const downloads = await res.json();
+        const activeCount = downloads.filter(d => d.status === 'downloading').length;
+        const badge = document.getElementById('download-badge');
+        
+        if (activeCount > 0) {
+            badge.textContent = activeCount;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+
+        const popover = document.getElementById('downloads-popover');
+        if (!popover.classList.contains('hidden')) {
+            const list = document.getElementById('downloads-list');
+            list.innerHTML = '';
+            
+            if (downloads.length === 0) {
+                list.innerHTML = `<div style="padding:20px; text-align:center; color:var(--text-muted); font-size:12px;">No hay descargas recientes</div>`;
+            } else {
+                downloads.sort((a,b) => b.startTime - a.startTime).forEach(d => {
+                    const item = document.createElement('div');
+                    item.className = 'download-item';
+                    
+                    const percent = d.total > 0 ? Math.min(100, Math.round((d.received / d.total) * 100)) : 0;
+                    const statusClass = d.status === 'completed' ? 'completed' : (d.status === 'error' ? 'error' : '');
+                    let statusText = d.status === 'completed' ? 'Completado' : (d.status === 'error' ? 'Error' : `${percent}%`);
+                    
+                    if (d.status === 'downloading' && d.total === 0) statusText = 'Descargando...';
+
+                    item.innerHTML = `
+                        <div class="download-info">
+                            <span class="download-name" title="${d.filename}">${d.filename}</span>
+                            <span class="download-status">${statusText}</span>
+                        </div>
+                        <div class="download-progress-container">
+                            <div class="download-progress-bar ${statusClass}" style="width: ${d.status === 'completed' ? '100%' : percent + '%'}"></div>
+                        </div>
+                        ${d.status === 'completed' ? `
+                        <div class="download-actions">
+                            <button class="download-btn-action">Ver ubicación</button>
+                        </div>` : ''}
+                    `;
+
+                    const btn = item.querySelector('.download-btn-action');
+                    if (btn) {
+                        btn.onclick = (e) => {
+                            e.stopPropagation();
+                            const lastSep = Math.max(d.path.lastIndexOf('/'), d.path.lastIndexOf('\\'));
+                            const dir = d.path.substring(0, lastSep) || (d.path.includes(':') ? d.path.split('\\')[0] + '\\' : '/');
+                            navigateTo(dir);
+                            popover.classList.add('hidden');
+                        };
+                    }
+                    list.appendChild(item);
+                });
+            }
+        }
+    } catch (e) { 
+        document.getElementById('download-badge').classList.add('hidden');
+    }
+}
+setInterval(updateDownloads, 2000);
 
 async function handleFileOpen(file, forceModal = false) {
     const ext = file.ext.toLowerCase();
@@ -1287,6 +1416,7 @@ async function loadSystemPaths() {
         const p = await res.json();
         const side = document.getElementById('system-bookmarks');
         side.innerHTML = '';
+        
         const add = (n, i, path) => {
             const li = document.createElement('li');
             li.dataset.path = path;
@@ -1294,6 +1424,8 @@ async function loadSystemPaths() {
             li.onclick = () => navigateTo(path);
             side.appendChild(li);
         };
+
+        // Standard Places
         add(t('home'), 'user-home.svg', p.home);
         add(t('desktop'), 'user-desktop.svg', p.desktop);
         add(t('documents'), 'folder-documents.svg', p.documents);
@@ -1301,6 +1433,22 @@ async function loadSystemPaths() {
         if (p.music) add(t('music_player'), 'folder-music.svg', p.music);
         if (p.pictures) add(t('image'), 'folder-pictures.svg', p.pictures);
         if (p.videos) add(t('video'), 'folder-videos.svg', p.videos);
+
+        // Windows Drives Section
+        if (p.drives && p.drives.length > 0) {
+            const driveHeader = document.createElement('div');
+            driveHeader.className = 'sidebar-header';
+            driveHeader.textContent = t('this_pc');
+            side.appendChild(driveHeader);
+
+            p.drives.forEach(drive => {
+                const li = document.createElement('li');
+                li.dataset.path = drive;
+                li.innerHTML = `<img src="icons/adwaita/user-home.svg" style="filter: hue-rotate(200deg)"> <span style="flex:1">${drive}</span>`;
+                li.onclick = () => navigateTo(drive);
+                side.appendChild(li);
+            });
+        }
     } catch(e) { console.error("Error loading system paths:", e); }
 }
 
@@ -1326,7 +1474,7 @@ async function loadCustomBookmarks() {
 }
 
 function updateActiveBookmark() {
-    const norm = (p) => p.replace(/[\\\/]$/, '').toLowerCase();
+    const norm = (p) => (p || '').replace(/[\\\/]$/, '').toLowerCase();
     const current = norm(currentPath);
     document.querySelectorAll('.sidebar li').forEach(li => {
         const liPath = li.dataset.path;

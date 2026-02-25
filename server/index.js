@@ -6,8 +6,16 @@ const archiver = require('archiver');
 const AdmZip = require('adm-zip');
 const open = require('open');
 const os = require('os');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
+
+// Ensure fetch is available (Node 18+) or polyfill
+if (typeof fetch === 'undefined') {
+    global.fetch = require('node-fetch');
+}
 
 const app = express();
 
@@ -39,6 +47,43 @@ async function saveConfig(config) {
     } catch (err) {
         console.error('Error saving config:', err);
     }
+}
+
+// Windows Drive Detection Helper
+async function getWindowsDrives() {
+    if (os.platform() !== 'win32') return [];
+    try {
+        // We use powershell as it is more modern than wmic
+        const { stdout } = await execPromise('powershell "Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root"');
+        return stdout.split(/\r?\n/).filter(l => l.trim() !== '').map(l => l.trim());
+    } catch (e) {
+        console.error('Error detecting drives:', e);
+        return ['C:\\']; // Safe fallback
+    }
+}
+
+// Localized Path Helper
+async function findLocalizedPath(root, standardName) {
+    const commonLocalizedNames = {
+        'Desktop': ['Escritorio', 'Bureau', 'Schreibtisch'],
+        'Documents': ['Documentos', 'Documents', 'Dokumente'],
+        'Downloads': ['Descargas', 'Téléchargements', 'Downloads'],
+        'Music': ['Música', 'Musique', 'Musik'],
+        'Pictures': ['Imágenes', 'Images', 'Bilder'],
+        'Videos': ['Vídeos', 'Vidéos', 'Videos']
+    };
+
+    const target = path.join(root, standardName);
+    if (await fs.pathExists(target)) return target;
+
+    // Search for localized versions
+    const candidates = commonLocalizedNames[standardName] || [];
+    for (const name of candidates) {
+        const locTarget = path.join(root, name);
+        if (await fs.pathExists(locTarget)) return locTarget;
+    }
+    
+    return target; // Return standard even if not found
 }
 
 // Parse arguments
@@ -73,6 +118,54 @@ async function initServer() {
     // Base path defaults to user home directory
     const ROOT = os.homedir();
 
+    const CONFIG_DIR = path.join(os.homedir(), '.bautilus');
+    const DOWNLOADS_FILE = path.join(CONFIG_DIR, 'downloads.json');
+
+    let activeDownloads = {};
+
+    async function loadDownloads() {
+        try {
+            if (await fs.pathExists(DOWNLOADS_FILE)) {
+                activeDownloads = await fs.readJson(DOWNLOADS_FILE);
+                // Reset status of "downloading" items to "interrupted" or "unknown" on restart
+                for (const id in activeDownloads) {
+                    if (activeDownloads[id].status === 'downloading') {
+                        activeDownloads[id].status = 'error';
+                        activeDownloads[id].error = 'Server restarted';
+                    }
+                }
+            }
+        } catch (err) { console.error('Error loading downloads:', err); }
+    }
+
+    async function saveDownloads() {
+        try {
+            await fs.ensureDir(CONFIG_DIR);
+            // Only save a limited history (e.g. last 50 downloads)
+            const history = Object.entries(activeDownloads)
+                .sort((a,b) => b[1].startTime - a[1].startTime)
+                .slice(0, 50);
+            await fs.writeJson(DOWNLOADS_FILE, Object.fromEntries(history), { spaces: 2 });
+        } catch (err) { console.error('Error saving downloads:', err); }
+    }
+
+    await loadDownloads();
+
+    app.get('/downloads', (req, res) => {
+        res.json(Object.values(activeDownloads));
+    });
+
+    app.post('/clear-downloads', async (req, res) => {
+        // Clear only completed or error downloads
+        for (const id in activeDownloads) {
+            if (activeDownloads[id].status !== 'downloading') {
+                delete activeDownloads[id];
+            }
+        }
+        await saveDownloads();
+        res.json({ success: true });
+    });
+
     // Config endpoints
     app.get('/get-config', (req, res) => {
         res.json({ port: PORT, interface: INTERFACE, needsConfig });
@@ -95,16 +188,23 @@ async function initServer() {
     });
 
     // Get standard system paths
-app.get('/system-paths', (req, res) => {
+app.get('/system-paths', async (req, res) => {
+    const drives = await getWindowsDrives();
     res.json({
         home: ROOT,
-        desktop: path.join(ROOT, 'Desktop'),
-        documents: path.join(ROOT, 'Documents'),
-        downloads: path.join(ROOT, 'Downloads'),
-        music: path.join(ROOT, 'Music'),
-        pictures: path.join(ROOT, 'Pictures'),
-        videos: path.join(ROOT, 'Videos')
+        desktop: await findLocalizedPath(ROOT, 'Desktop'),
+        documents: await findLocalizedPath(ROOT, 'Documents'),
+        downloads: await findLocalizedPath(ROOT, 'Downloads'),
+        music: await findLocalizedPath(ROOT, 'Music'),
+        pictures: await findLocalizedPath(ROOT, 'Pictures'),
+        videos: await findLocalizedPath(ROOT, 'Videos'),
+        drives: drives
     });
+});
+
+app.get('/drives', async (req, res) => {
+    const drives = await getWindowsDrives();
+    res.json(drives);
 });
 
 function getSafePath(requestPath) {
@@ -115,7 +215,26 @@ function getSafePath(requestPath) {
 // List directory contents
 app.get('/files', async (req, res) => {
     try {
-        const targetPath = getSafePath(req.query.path);
+        let targetPath = req.query.path;
+        
+        // Handle root of all drives in Windows if path is empty or "root"
+        if (os.platform() === 'win32' && (!targetPath || targetPath === 'root')) {
+            const drives = await getWindowsDrives();
+            return res.json({
+                currentPath: 'root',
+                parentPath: null,
+                files: drives.map(d => ({
+                    name: d,
+                    path: d,
+                    isDirectory: true,
+                    size: 0,
+                    mtime: new Date(),
+                    ext: ''
+                }))
+            });
+        }
+
+        targetPath = getSafePath(targetPath);
         const stats = await fs.stat(targetPath);
         
         if (!stats.isDirectory()) {
@@ -269,8 +388,9 @@ app.post('/save', async (req, res) => {
     }
 });
 
-// Download from URL to local path
+    // Download from URL to local path
     app.post('/download-from-url', async (req, res) => {
+        const downloadId = Date.now().toString();
         try {
             const { url, targetPath, filename } = req.body;
             if (!url || !targetPath || !filename) {
@@ -281,6 +401,7 @@ app.post('/save', async (req, res) => {
             const safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '-');
             const saveDir = getSafePath(targetPath);
             const fullPath = path.join(saveDir, safeFilename);
+            const partPath = fullPath + '.bautilus-part';
             
             console.log(`Downloading ${url} -> ${fullPath}`);
             
@@ -292,19 +413,66 @@ app.post('/save', async (req, res) => {
             if (!response.body) {
                 throw new Error("No response body");
             }
+
+            const totalBytes = parseInt(response.headers.get('content-length') || '0');
+            activeDownloads[downloadId] = {
+                id: downloadId,
+                filename: safeFilename,
+                path: fullPath,
+                total: totalBytes,
+                received: 0,
+                status: 'downloading',
+                startTime: Date.now()
+            };
+            await saveDownloads();
             
-            const fileStream = fs.createWriteStream(fullPath);
-            await pipeline(Readable.fromWeb(response.body), fileStream);
+            const fileStream = fs.createWriteStream(partPath);
             
-            console.log("Download complete.");
-            res.json({ success: true, path: fullPath });
+            res.json({ success: true, downloadId });
+
+            // Using Readable.from(response.body) for cross-compatibility between Node versions
+            const bodyStream = response.body.getReader ? Readable.fromWeb(response.body) : response.body;
+
+            (async () => {
+                try {
+                    let lastSave = Date.now();
+                    for await (const chunk of bodyStream) {
+                        activeDownloads[downloadId].received += chunk.length;
+                        fileStream.write(chunk);
+                        
+                        // Periodic save every 2s during download
+                        if (Date.now() - lastSave > 2000) {
+                            await saveDownloads();
+                            lastSave = Date.now();
+                        }
+                    }
+                    fileStream.end();
+                    
+                    // Rename .part to final filename
+                    await fs.move(partPath, fullPath, { overwrite: true });
+                    
+                    activeDownloads[downloadId].status = 'completed';
+                    console.log(`Download complete: ${safeFilename}`);
+                    
+                    await saveDownloads();
+                } catch (err) {
+                    console.error("Stream error:", err);
+                    if (activeDownloads[downloadId]) {
+                        activeDownloads[downloadId].status = 'error';
+                        activeDownloads[downloadId].error = err.message;
+                    }
+                    fileStream.end();
+                    // Cleanup partial file
+                    if (await fs.pathExists(partPath)) await fs.remove(partPath);
+                    await saveDownloads();
+                }
+            })();
             
         } catch (error) {
             console.error("Download error:", error);
             res.status(500).json({ error: error.message });
         }
     });
-
     app.listen(PORT, INTERFACE, () => {
         const url = `http://${INTERFACE === '0.0.0.0' ? 'localhost' : INTERFACE}:${PORT}`;
         console.log(`Bautilus Backend running on ${url}`);

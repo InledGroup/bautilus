@@ -43,6 +43,98 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onStartup.addListener(checkUpdates);
 chrome.runtime.onInstalled.addListener(checkUpdates);
 
+// Progress Icon Manager
+// Progress Icon Manager
+let cachedIconBitmap = null;
+
+async function updateActionIcon(activeDownloads) {
+    const downloading = activeDownloads.filter(d => d.status === 'downloading');
+    const count = downloading.length;
+
+    if (count === 0) {
+        chrome.action.setBadgeText({ text: '' });
+        chrome.action.setIcon({ path: {
+            "16": "bautilus.png",
+            "48": "bautilus.png",
+            "128": "bautilus.png"
+        }});
+        return;
+    }
+
+    // Set Badge
+    chrome.action.setBadgeText({ text: count.toString() });
+    chrome.action.setBadgeBackgroundColor({ color: '#e01b24' });
+
+    // Calculate overall percentage
+    let totalBytes = 0;
+    let receivedBytes = 0;
+    downloading.forEach(d => {
+        if (d.total > 0) {
+            totalBytes += d.total;
+            receivedBytes += d.received;
+        }
+    });
+
+    const percent = totalBytes > 0 ? receivedBytes / totalBytes : 0;
+    
+    // Draw progress circle on icon
+    const canvas = new OffscreenCanvas(32, 32);
+    const ctx = canvas.getContext('2d');
+
+    // Load base icon if not cached
+    if (!cachedIconBitmap) {
+        try {
+            const response = await fetch(chrome.runtime.getURL('bautilus.png'));
+            const blob = await response.blob();
+            cachedIconBitmap = await createImageBitmap(blob);
+        } catch (e) {
+            console.error("Error loading icon bitmap:", e);
+        }
+    }
+
+    ctx.clearRect(0, 0, 32, 32);
+    
+    // Draw the Bautilus logo in the center (scaled down to fit ring)
+    if (cachedIconBitmap) {
+        ctx.drawImage(cachedIconBitmap, 6, 6, 20, 20);
+    }
+
+    // Outer circle (muted background for the ring)
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Progress arc
+    ctx.beginPath();
+    ctx.arc(16, 16, 14, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * percent));
+    ctx.strokeStyle = '#3584e4';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    const imageData = ctx.getImageData(0, 0, 32, 32);
+    chrome.action.setIcon({ imageData: { "32": imageData } });
+}
+
+async function pollDownloads() {
+    chrome.storage.local.get(['serverUrl'], async (r) => {
+        const apiBase = r.serverUrl || 'http://localhost:3001';
+        try {
+            const res = await fetch(`${apiBase}/downloads`);
+            if (res.ok) {
+                const downloads = await res.json();
+                updateActionIcon(downloads);
+            }
+        } catch (e) {
+            // Server might be down, ignore
+        }
+    });
+}
+
+setInterval(pollDownloads, 2000);
+
 let pickerRequestTabId = null;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -102,22 +194,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     else if (msg.action === 'save_target_selected') {
         const { fileUrl, targetPath, filename } = msg;
         
-        // Send request to local server to download the file
-        // We use the server to bypass browser download folder restrictions
-        fetch('http://localhost:3001/download-from-url', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ url: fileUrl, targetPath, filename })
-        }).then(res => {
-            if (res.ok) {
-                chrome.notifications.create({
-                    type: 'basic',
-                    iconUrl: 'bautilus.png',
-                    title: chrome.i18n.getMessage("downloadCompleted"),
-                    message: `${chrome.i18n.getMessage("savedIn")} ${targetPath}`
+        chrome.storage.local.get(['serverUrl'], async (r) => {
+            const apiBase = r.serverUrl || 'http://localhost:3001';
+            
+            try {
+                // Send request to local server to download the file
+                const res = await fetch(`${apiBase}/download-from-url`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ url: fileUrl, targetPath, filename })
                 });
-            } else {
-                console.error("Download failed on server");
+
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log("Download started on server:", data.downloadId);
+                    // Start polling progress immediately to update UI
+                    pollDownloads();
+                } else {
+                    console.error("Download failed on server");
+                }
+            } catch (err) {
+                console.error("Fetch error on server download:", err);
             }
         });
 
@@ -138,17 +235,24 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
         return; // Let browser handle it
     }
 
-    // Cancel the default browser download
-    chrome.downloads.cancel(item.id, () => {
-        if (chrome.runtime.lastError) console.warn(chrome.runtime.lastError);
-        // Erase from history to avoid "Canceled" entry clutter
-        chrome.downloads.erase({id: item.id});
-    });
+    // Capture suggested filename
+    const filename = item.filename;
+    const url = item.url;
+
+    // Delay cancellation slightly to avoid "Download must be in progress" errors
+    // and ensure the download is actually registered.
+    setTimeout(() => {
+        chrome.downloads.cancel(item.id, () => {
+            if (chrome.runtime.lastError) {
+                // Ignore if it was already handled or not yet in progress
+                console.warn('Cancel error:', chrome.runtime.lastError.message);
+            }
+            // Erase from history to avoid "Canceled" entry clutter
+            chrome.downloads.erase({id: item.id});
+        });
+    }, 100); // Small delay to let browser stabilize
 
     // Open Bautilus Save UI
-    const filename = item.filename; // Suggested filename
-    const url = item.url;
-    
     // Pass info to the popup via URL params
     const winUrl = `index.html?mode=save&filename=${encodeURIComponent(filename)}&url=${encodeURIComponent(url)}`;
     

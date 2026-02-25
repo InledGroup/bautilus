@@ -1,60 +1,59 @@
 # 📂 Bautilus
 
-> Un explorador de archivos y entorno de trabajo profesional, integrado directamente en tu navegador.  
-
+> A professional file explorer and workspace, integrated directly into your browser.
 
 > [!CAUTION]
-> Este proyecto está en una fase beta por lo que no lo recomendamos para producción actualmente. Sigue la actualidad de este y otros proyectos de Inled Group en [nuestra newsletter](https://link.inled.es/newsletter-sub1).
+> This project is in beta phase, so we do not recommend it for production currently. Follow the news of this and other Inled Group projects in [our newsletter](https://link.inled.es/newsletter-sub1).
 
 [![License: GNU](https://img.shields.io/badge/License-GNU%20GPLv3-red.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
 [![Tech](https://img.shields.io/badge/tech-JavaScript%20|%20Node.js-green.svg)](#)
 
-**Bautilus** es una extensión de navegador diseñada para usuarios que buscan una gestión de archivos fluida y un espacio de trabajo productivo sin salir de la web. Inspirado en la estética limpia de GNOME (Nautilus), Bautilus transforma tu navegador en un sistema operativo ligero y potente.
+**Bautilus** is a browser extension designed for users seeking seamless file management and a productive workspace without leaving the web. Inspired by the clean aesthetics of GNOME (Nautilus), Bautilus transforms your browser into a lightweight and powerful operating system.
 
 ---
 
-## ✨ Características Principales
+## ✨ Key Features
 
-### 🛠️ Entorno de Trabajo Integrado
-- **Edición de Código Pro:** Integra **Monaco Editor** (el motor detrás de VS Code) para editar archivos con resaltado de sintaxis, autocompletado y múltiples cursores.
-- **Visualización de Documentos:** Soporte nativo para PDFs mediante **PDF.js**, permitiendo lectura y navegación fluida de documentos.
-- **Reproductor Multimedia:** Experiencia de audio y video premium gracias a la integración de **Plyr**.
+### 🛠️ Integrated Workspace
+- **Pro Code Editing:** Integrates **Monaco Editor** (the engine behind VS Code) to edit files with syntax highlighting, autocompletion, and multiple cursors.
+- **Document Viewing:** Native support for PDFs via **PDF.js**, allowing smooth reading and navigation of documents.
+- **Multimedia Player:** Premium audio and video experience thanks to the integration of **Plyr**.
 
-### 📁 Gestión de Archivos Avanzada
-- **Interfaz Adwaita:** Estética moderna y familiar basada en los iconos y el estilo de GNOME.
-- **Compresión Integrada:** Manejo de archivos comprimidos con **JSZip**.
-- **Acceso Rápido:** Navegación por carpetas estándar (Documentos, Descargas, Imágenes, Videos).
+### 📁 Advanced File Management
+- **Adwaita Interface:** Modern and familiar aesthetics based on GNOME icons and style.
+- **Integrated Compression:** Handling of compressed files with **JSZip**.
+- **Quick Access:** Navigation through standard folders (Documents, Downloads, Images, Videos).
 
-### 🖥️ Componente de Servidor
-- Incluye un servidor **Node.js** para facilitar la persistencia y la interacción con el sistema de archivos local de forma segura.
+### 🖥️ Server Component
+- Includes a **Node.js** server to facilitate persistence and interaction with the local file system securely.
 
 ---
 
-## 🚀 Tecnologías Utilizadas
+## 🚀 Technologies Used
 
-Bautilus está construido sobre los estándares más exigentes de la web moderna:
+Bautilus is built on the most demanding standards of the modern web:
 
 - **Frontend:** HTML5, CSS3 (Custom Properties), JavaScript (ES6+).
-- **Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) para una experiencia de codificación de nivel superior.
-- **PDF:** [PDF.js](https://mozilla.github.io/pdf.js/) de Mozilla.
-- **Media:** [Plyr](https://plyr.io/) para un reproductor multimedia accesible y personalizable.
-- **Backend:** Node.js (Express) para el puente de comunicación con el sistema.
-- **Iconografía:** Set de iconos Adwaita.
+- **Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) for a top-tier coding experience.
+- **PDF:** [PDF.js](https://mozilla.github.io/pdf.js/) by Mozilla.
+- **Media:** [Plyr](https://plyr.io/) for an accessible and customizable multimedia player.
+- **Backend:** Node.js (Express) for the communication bridge with the system.
+- **Iconography:** Adwaita icon set.
 
 ---
 
-## 🛠️ Instalación
+## 🛠️ Installation
 
-### 1. Extensión de Navegador
-Para instalar la extensión en modo desarrollo (Chrome/Edge/Brave):
-1. Clona este repositorio.
-2. Abre `chrome://extensions/` en tu navegador.
-3. Activa el **"Modo de desarrollador"** (Developer mode).
-4. Haz clic en **"Cargar descomprimida"** (Load unpacked) y selecciona la carpeta `extension/` de este proyecto.
+### 1. Browser Extension
+To install the extension in development mode (Chrome/Edge/Brave):
+1. Clone this repository.
+2. Open `chrome://extensions/` in your browser.
+3. Enable **"Developer mode"**.
+4. Click on **"Load unpacked"** and select the `extension/` folder of this project.
 
-### 2. Servidor Backend
-El servidor es necesario para ciertas funciones de gestión de archivos:
+### 2. Backend Server
+The server is required for certain file management functions:
 ```bash
 cd server
 npm install
@@ -63,22 +62,21 @@ node index.js
 
 ---
 
+## 🤝 Contribution
 
-## 🤝 Contribución
-
-¿Quieres mejorar Bautilus? ¡Las contribuciones son bienvenidas!
-1. Haz un Fork del proyecto.
-2. Crea tu rama de características (`git checkout -b feature/AmazingFeature`).
-3. Haz commit de tus cambios (`git commit -m 'Add some AmazingFeature'`).
-4. Push a la rama (`git push origin feature/AmazingFeature`).
-5. Abre un Pull Request.
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Consulta el archivo `LICENSE` para más detalles.
+Want to improve Bautilus? Contributions are welcome!
+1. Fork the project.
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`).
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+4. Push to the branch (`git push origin feature/AmazingFeature`).
+5. Open a Pull Request.
 
 ---
 
-**Desarrollado con ❤️ para la productividad web.**
+## 📄 License
+
+This project is licensed under the MIT License. See the `LICENSE` file for more details.
+
+---
+
+**Developed with ❤️ for web productivity.**
