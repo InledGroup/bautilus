@@ -4,7 +4,14 @@ const fs = require('fs-extra');
 const path = require('path');
 const archiver = require('archiver');
 const AdmZip = require('adm-zip');
-const open = require('open');
+const open = async (...args) => {
+    try {
+        const { default: openApp } = await import('open');
+        return await openApp(...args);
+    } catch (err) {
+        console.error('Error importing or running open:', err);
+    }
+};
 const os = require('os');
 const { exec } = require('child_process');
 const util = require('util');
@@ -480,6 +487,7 @@ app.post('/save', async (req, res) => {
         
         if (needsConfig) {
             console.log('No configuration found. Opening visual configurator...');
+            console.log(`If it doesn't open automatically, please click or visit: ${url}/index.html?setup=1`);
             open(`${url}/index.html?setup=1`);
         }
     });

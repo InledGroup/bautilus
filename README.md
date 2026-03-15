@@ -60,6 +60,12 @@ npm install
 node index.js
 ```
 
+You can optionally configure the port and interface directly from the command line when starting the server. Note that the arguments must be formatted using a colon (`:`) separator as programmed:
+```bash
+# Example: Change port to 8080 and interface to all available network IPs
+node index.js --port:8080 --interface:0.0.0.0
+```
+
 ---
 
 ## 🤝 Contribution
