@@ -32,15 +32,17 @@ const storage = {
 
 let currentPath = '';
 let selectedFile = null;
-let clipboard = { op: null, path: null }; 
-let viewMode = 'grid'; 
-let sortBy = 'name';
+let clipboard = { op: null, paths: null };
+let viewMode = 'grid';let sortBy = 'name-asc';
+let lastOpenedData = {};
 let currentFiles = [];
 let renderedFiles = []; // Para trackear el orden visual actual
 let selectedFiles = []; // Nuevo array para selección múltiple
 let lastSelectedIdx = -1;
+let pendingHighlightPath = null;
 
 const urlParams = new URLSearchParams(window.location.search);
+const params = urlParams; // Alias for easier access
 const APP_MODE = urlParams.get('mode') || 'normal'; // normal, picker, save
 const SAVE_FILENAME_PARAM = urlParams.get('filename') || '';
 const SAVE_URL_PARAM = urlParams.get('url') || '';
@@ -51,9 +53,11 @@ const translations = {
         places: "Lugares",
         bookmarks: "Marcadores",
         search: "Buscar...",
-        sort_name: "Nombre",
-        sort_date: "Fecha",
-        sort_size: "Tamaño",
+        sort_name_asc: "A-Z",
+        sort_name_desc: "Z-A",
+        sort_date_desc: "Nuevo-Viejo",
+        sort_date_asc: "Viejo-Nuevo",
+        sort_last_opened: "Última vez abierto",
         name: "Nombre",
         size: "Tamaño",
         modified: "Modificado",
@@ -115,6 +119,11 @@ const translations = {
         save_here: "Guardar Aquí",
         select_valid_file: "Selecciona un archivo válido",
         error_no_filename: "Por favor, escribe un nombre de archivo.",
+        clipboard: "Portapapeles",
+        item: "elemento",
+        more: "Más",
+        close: "Cerrar",
+        go_to_location: "Ir a ubicación",
         check_updates: "Comprobar actualizaciones",
         update_available: "¡Nueva actualización disponible!",
         later: "Más tarde",
@@ -138,9 +147,11 @@ const translations = {
         places: "Places",
         bookmarks: "Bookmarks",
         search: "Search...",
-        sort_name: "Name",
-        sort_date: "Date",
-        sort_size: "Size",
+        sort_name_asc: "A-Z",
+        sort_name_desc: "Z-A",
+        sort_date_desc: "New-Old",
+        sort_date_asc: "Old-New",
+        sort_last_opened: "Last Opened",
         name: "Name",
         size: "Size",
         modified: "Modified",
@@ -202,6 +213,11 @@ const translations = {
         save_here: "Save Here",
         select_valid_file: "Select a valid file",
         error_no_filename: "Please write a filename.",
+        clipboard: "Clipboard",
+        item: "item",
+        more: "More",
+        close: "Close",
+        go_to_location: "Go to location",
         check_updates: "Check for updates",
         update_available: "New update available!",
         later: "Later",
@@ -289,13 +305,13 @@ async function init() {
     if (srv.serverUrl) API_URL = srv.serverUrl;
 
     // Load Language
-    const prefs = await storage.get(['lang']);
+    const prefs = await storage.get(['lang', 'lastOpened']);
     currentLang = prefs.lang || 'es';
+    lastOpenedData = prefs.lastOpened || {};
     document.getElementById('lang-select').value = currentLang;
     updateUI();
 
     // Check for "setup" mode in URL
-    const params = new URLSearchParams(window.location.search);
     if (params.get('setup')) {
         openSettingsModal();
     }
@@ -320,9 +336,12 @@ async function init() {
     }
 
     setupGlobalEvents();
-    await loadSystemPaths();
+    const systemPaths = await loadSystemPaths();
     await loadCustomBookmarks();
-    await navigateTo(''); 
+    
+    // Iniciar en Home si está disponible, si no en root
+    const startPath = (systemPaths && systemPaths.home) ? systemPaths.home : 'root';
+    await navigateTo(startPath); 
 
     // Check for updates from storage
     const upd = await storage.get(['updateAvailable']);
@@ -353,26 +372,29 @@ function showUpdateModal(updateEntry) {
     };
 }
 
-async function navigateTo(path, addToHistory = true) {
+async function navigateTo(path, addToHistory = true, targetFilePath = null) {
     if (addToHistory && currentPath) historyStack.push(currentPath);
     if (addToHistory) forwardStack = [];
     
-    // Clear selection on navigation
     selectedFiles = [];
     selectedFile = null;
     lastSelectedIdx = -1;
-    if (document.getElementById('bottom-bar')) {
-        document.getElementById('bottom-bar').classList.add('hidden');
-    }
+    pendingHighlightPath = targetFilePath;
+    
+    updateSelectionUI();
 
     try {
         const res = await fetch(`${API_URL}/files?path=${encodeURIComponent(path)}`);
         const data = await res.json();
-        currentPath = data.currentPath;
-        currentFiles = data.files;
+        currentPath = data.currentPath || 'root';
+        currentFiles = data.files || [];
         render();
         updateNavButtons();
-    } catch (e) { console.error("Navigation error:", e); }
+    } catch (e) { 
+        console.error("Navigation error:", e);
+        currentFiles = [];
+        render();
+    }
 }
 
 function updateNavButtons() {
@@ -389,26 +411,66 @@ function render() {
     const fileView = document.getElementById('file-view');
     const listHeader = document.getElementById('list-header');
     
+    if (!fileView) return;
     fileView.innerHTML = '';
     fileView.className = `file-view ${viewMode}-view`;
     if (listHeader) listHeader.classList.toggle('hidden', viewMode !== 'list');
     
+    if (!currentFiles || !Array.isArray(currentFiles)) {
+        console.warn("No hay archivos válidos para mostrar");
+        return;
+    }
+
     const query = document.getElementById('search-input').value.toLowerCase();
-    let filtered = currentFiles.filter(f => f.name.toLowerCase().includes(query));
+    
+    // Priorizamos resultados globales si existen, si no, usamos locales.
+    let filtered = [];
+    if (query) {
+        if (globalSearchResults.length > 0) {
+            filtered = [...globalSearchResults];
+        } else {
+            // Mientras no hay globales, filtramos lo que ya tenemos en la carpeta actual
+            filtered = currentFiles.filter(f => f.name.toLowerCase().includes(query));
+        }
+    } else {
+        filtered = [...currentFiles];
+    }
     
     filtered.sort((a,b) => {
         if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-        if (sortBy === 'date') return new Date(b.mtime) - new Date(a.mtime);
-        if (sortBy === 'size') return b.size - a.size;
-        return a.name.localeCompare(b.name);
+        
+        switch (sortBy) {
+            case 'name-asc':
+                return a.name.localeCompare(b.name);
+            case 'name-desc':
+                return b.name.localeCompare(a.name);
+            case 'date-desc':
+                return new Date(b.mtime) - new Date(a.mtime);
+            case 'date-asc':
+                return new Date(a.mtime) - new Date(b.mtime);
+            case 'last-opened':
+                const tA = lastOpenedData[a.path] || 0;
+                const tB = lastOpenedData[b.path] || 0;
+                return tB - tA;
+            default:
+                return a.name.localeCompare(b.name);
+        }
     });
 
     renderedFiles = [...filtered];
 
     filtered.forEach(file => {
+        const isHighlight = pendingHighlightPath && file.path === pendingHighlightPath;
+        if (isHighlight) {
+            selectedFiles = [file];
+            selectedFile = file;
+        }
+
         const item = document.createElement('div');
         item.dataset.path = file.path;
-        item.className = 'file-item' + (selectedFiles.some(sf => sf.path === file.path) ? ' selected' : '');
+        item.className = 'file-item' + 
+                        (selectedFiles.some(sf => sf.path === file.path) ? ' selected' : '') +
+                        (isHighlight ? ' highlight-target' : '');
         
         const sizeStr = file.isDirectory ? '--' : formatSize(file.size);
         const dateStr = new Date(file.mtime).toLocaleDateString();
@@ -418,12 +480,15 @@ function render() {
         const iconSrc = isDrive ? 'icons/adwaita/user-home.svg' : getAdwaitaIcon(file);
         const iconStyle = isDrive ? 'style="filter: hue-rotate(200deg)"' : '';
 
+        // Resaltado de nombre si hay búsqueda
+        const displayName = query ? highlightText(file.name, query) : file.name;
+
         item.innerHTML = `
             <div class="thumb-container">
                 <img src="${iconSrc}" class="icon-img" ${iconStyle}>
                 ${isVideo ? '<div class="video-badge"><i data-lucide="play" size="18"></i></div>' : ''}
             </div>
-            <div class="name">${file.name}</div>
+            <div class="name">${displayName}</div>
             <div class="file-meta">${sizeStr}</div>
             <div class="file-meta">${dateStr}</div>
         `;
@@ -449,8 +514,84 @@ function render() {
 
     renderBreadcrumbs();
     updateActiveBookmark();
-    document.getElementById('bottom-bar').classList.add('hidden');
+    
+    if (pendingHighlightPath) {
+        updateSelectionUI();
+        pendingHighlightPath = null;
+    } else {
+        updateSelectionUI();
+    }
     if (window.lucide) lucide.createIcons();
+}
+
+function highlightText(text, query) {
+    if (!query) return text;
+    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    return text.replace(regex, '<span class="highlight">$1</span>');
+}
+
+let searchTimeout = null;
+let currentSearchSource = null;
+let globalSearchResults = [];
+
+function handleSearchInput() {
+    const query = document.getElementById('search-input').value.toLowerCase();
+    const progressBar = document.getElementById('search-progress-bar');
+    const progressContainer = document.getElementById('search-progress-container');
+    
+    // Cerrar búsqueda anterior
+    if (currentSearchSource) {
+        currentSearchSource.close();
+        currentSearchSource = null;
+    }
+    if (searchTimeout) clearTimeout(searchTimeout);
+
+    if (!query) {
+        globalSearchResults = []; 
+        render();
+        progressContainer.classList.add('hidden');
+        progressBar.classList.remove('searching');
+        return;
+    }
+
+    // Filtro local instantáneo
+    render();
+
+    // Mostrar feedback visual inmediatamente
+    progressContainer.classList.remove('hidden');
+    progressBar.classList.add('searching');
+
+    // Debounce para no saturar al servidor
+    searchTimeout = setTimeout(() => {
+        const url = `${API_URL}/search?query=${encodeURIComponent(query)}&rootPath=${encodeURIComponent(currentPath)}`;
+        const source = new EventSource(url);
+        currentSearchSource = source;
+        globalSearchResults = []; // Reset para esta nueva búsqueda
+
+        source.onmessage = (event) => {
+            try {
+                const item = JSON.parse(event.data);
+                globalSearchResults.push(item);
+                // Renderizar cada vez que recibimos un bloque de resultados
+                render();
+            } catch (e) {}
+        };
+
+        source.addEventListener('end', () => {
+            source.close();
+            currentSearchSource = null;
+            progressBar.classList.remove('searching');
+            progressContainer.classList.add('hidden');
+            console.log(`Búsqueda finalizada. ${globalSearchResults.length} resultados encontrados.`);
+        });
+
+        source.onerror = (err) => {
+            source.close();
+            currentSearchSource = null;
+            progressBar.classList.remove('searching');
+            progressContainer.classList.add('hidden');
+        };
+    }, 400);
 }
 
 function formatSize(bytes) {
@@ -503,6 +644,51 @@ function selectFile(file, event) {
     renderSelectionState(); // Refrescar clases visuales sin re-renderizar todo
 }
 
+function updateBottomBarResponsive() {
+    const bottomBar = document.getElementById('bottom-bar-wrapper');
+    const barActions = document.querySelector('.bar-section-actions');
+    const barMoreWrapper = document.querySelector('.bar-overflow-wrapper');
+    const barMore = document.getElementById('bar-more');
+    const overflowMenu = document.getElementById('bar-overflow-menu');
+    const closeSection = document.querySelector('.bar-section-close');
+
+    if (!bottomBar || bottomBar.classList.contains('hidden')) return;
+
+    // Reset: move all from overflow back to bar-actions
+    const overflowItems = Array.from(overflowMenu.children);
+    overflowItems.forEach(item => {
+        barActions.insertBefore(item, barMoreWrapper);
+    });
+    
+    barMore.classList.add('hidden');
+    overflowMenu.classList.add('hidden');
+
+    // Available width is the bar width minus the close button section
+    const availableWidth = bottomBar.offsetWidth - (closeSection ? closeSection.offsetWidth : 100) - 20;
+    let currentWidth = 0;
+    
+    const items = Array.from(barActions.children).filter(i => 
+        i !== barMoreWrapper && !i.classList.contains('bar-overflow-wrapper')
+    );
+
+    items.forEach(item => {
+        if (item.classList.contains('hidden')) return;
+        
+        // Measure item width accurately. Fallback to estimated widths if 0.
+        const itemWidth = item.offsetWidth || (item.classList.contains('bar-divider') ? 10 : 75);
+        
+        // If adding this item exceeds available width (leaving room for "More" button)
+        if (currentWidth + itemWidth > availableWidth - 80) {
+            barMore.classList.remove('hidden');
+            overflowMenu.appendChild(item);
+        } else {
+            currentWidth += itemWidth;
+        }
+    });
+
+    if (window.lucide) lucide.createIcons();
+}
+
 function updateSelectionUI() {
     if (APP_MODE === 'save') return; // Save mode doesn't use file selection actions
 
@@ -520,32 +706,53 @@ function updateSelectionUI() {
         return;
     }
 
-    const bar = document.getElementById('bottom-bar');
+    const bar = document.getElementById('bottom-bar-wrapper');
     const label = document.getElementById('selected-file-name');
     const barBm = document.getElementById('bar-bookmark');
     const barRename = document.getElementById('bar-rename');
     const barOpen = document.getElementById('bar-open');
     const barOpenWith = document.getElementById('bar-open-with');
+    const barGoLocation = document.getElementById('bar-go-location');
+    const barPaste = document.getElementById('bar-paste');
+    const barClearCb = document.getElementById('bar-clear-clipboard');
 
-    if (selectedFiles.length === 0) {
+    const hasClipboard = clipboard && clipboard.paths && clipboard.paths.length > 0;
+
+    if (selectedFiles.length === 0 && !hasClipboard) {
         bar.classList.add('hidden');
         return;
     }
 
     bar.classList.remove('hidden');
-    if (selectedFiles.length === 1) {
-        label.textContent = selectedFiles[0].name;
-        barRename.classList.remove('hidden');
-        barOpen.classList.remove('hidden');
-        if (barOpenWith) barOpenWith.classList.remove('hidden');
-        if (barBm) barBm.classList.toggle('hidden', !selectedFiles[0].isDirectory);
-    } else {
-        label.textContent = `${selectedFiles.length} ${t('items_selected')}`;
-        barRename.classList.add('hidden'); // No se puede renombrar múltiple fácilmente
-        barOpen.classList.add('hidden');   // Evitar abrir demasiadas ventanas por accidente
-        if (barOpenWith) barOpenWith.classList.add('hidden');
-        if (barBm) barBm.classList.add('hidden');
+    
+    const showSelectionActions = selectedFiles.length > 0;
+    
+    // Toggle selection specific buttons
+    [barOpen, barOpenWith, barRename, barBm, document.getElementById('bar-copy'), document.getElementById('bar-cut'), document.getElementById('bar-delete'), document.querySelector('.bar-divider')].forEach(el => {
+        if (el) el.classList.toggle('hidden', !showSelectionActions);
+    });
+
+    // Los botones de pegado se muestran si hay algo en el portapapeles.
+    // Si hay selección, los botones de pegado se mantendrán pero updateBottomBarResponsive los moverá al menú "Más" si no caben.
+    if (barPaste) barPaste.classList.toggle('hidden', !hasClipboard);
+    if (barClearCb) barClearCb.classList.toggle('hidden', !hasClipboard);
+
+    // El botón 'Ir a ubicación' solo se muestra si hay una búsqueda activa y hay selección
+    const isSearchMode = globalSearchResults.length > 0;
+    if (barGoLocation) barGoLocation.classList.toggle('hidden', !isSearchMode || selectedFiles.length !== 1);
+
+    if (showSelectionActions) {
+        if (selectedFiles.length === 1) {
+            label.textContent = selectedFiles[0].name;
+        } else {
+            label.textContent = `${selectedFiles.length} ${t('items_selected')}`;
+        }
+    } else if (hasClipboard) {
+        const count = clipboard.paths.length;
+        label.textContent = `${t('clipboard') || 'Portapapeles'}: ${count} ${count === 1 ? (t('item') || 'elemento') : t('items_selected')}`;
     }
+
+    setTimeout(updateBottomBarResponsive, 10);
 }
 
 function renderSelectionState() {
@@ -627,6 +834,7 @@ function getAdwaitaIcon(f) {
     if (['.mp4','.webm','.ogv','.mov','.mkv'].includes(e)) return 'icons/adwaita/file-video.svg';
     if (['.zip', '.rar', '.7z', '.tar', '.gz'].includes(e)) return 'icons/adwaita/file-archive.svg';
     if (['.html','.js','.css','.json','.ts'].includes(e)) return 'icons/adwaita/file-code.svg';
+    if (['.exe', '.dmg', '.msi', '.pkg'].includes(e)) return 'icons/adwaita/file-exec.svg';
     return 'icons/adwaita/file-text.svg';
 }
 
@@ -667,7 +875,7 @@ function setupGlobalEvents() {
     };
     
     document.getElementById('btn-view-toggle').onclick = () => { viewMode = viewMode === 'grid' ? 'list' : 'grid'; render(); };
-    document.getElementById('search-input').oninput = () => render();
+    document.getElementById('search-input').oninput = () => handleSearchInput();
     document.getElementById('sort-select').onchange = (e) => { sortBy = e.target.value; render(); };
 
     document.getElementById('btn-downloads').onclick = (e) => {
@@ -726,6 +934,10 @@ function setupGlobalEvents() {
         
         if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
             chrome.runtime.sendMessage({ action: 'check_updates_manual' }, (response) => {
+                if (chrome.runtime.lastError) {
+                    btn.classList.remove('spinning');
+                    return console.warn("Update check error:", chrome.runtime.lastError.message);
+                }
                 btn.classList.remove('spinning');
                 if (response && response.updateAvailable) {
                     showUpdateModal(response.updateAvailable);
@@ -742,30 +954,47 @@ function setupGlobalEvents() {
     // Action Bar
     document.getElementById('bar-open').onclick = () => selectedFile && handleFileOpen(selectedFile);
     document.getElementById('bar-open-with').onclick = () => selectedFile && handleFileOpen(selectedFile, true);
+    document.getElementById('bar-go-location').onclick = () => {
+        if (!selectedFile) return;
+        const fullPath = selectedFile.path;
+        const lastSep = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
+        if (lastSep === -1) return;
+        
+        const parentDir = fullPath.substring(0, lastSep) || (fullPath.includes(':') ? fullPath.split('\\')[0] + '\\' : '/');
+        
+        // Limpiar búsqueda al ir a ubicación
+        document.getElementById('search-input').value = '';
+        globalSearchResults = [];
+        
+        navigateTo(parentDir, true, fullPath);
+    };
     document.getElementById('bar-close').onclick = () => {
         selectedFiles = [];
         selectedFile = null;
+        clipboard = { op: null, paths: null };
         updateSelectionUI();
         renderSelectionState();
     };
     
     document.getElementById('bar-copy').onclick = () => { 
         clipboard = { op: 'copy', paths: selectedFiles.map(f => f.path) }; 
-        document.getElementById('paste-bar').classList.remove('hidden'); 
-        document.getElementById('bottom-bar').classList.add('hidden');
+        selectedFiles = [];
+        updateSelectionUI();
+        renderSelectionState();
     };
     document.getElementById('bar-cut').onclick = () => { 
         clipboard = { op: 'cut', paths: selectedFiles.map(f => f.path) }; 
-        document.getElementById('paste-bar').classList.remove('hidden'); 
-        document.getElementById('bottom-bar').classList.add('hidden');
+        selectedFiles = [];
+        updateSelectionUI();
+        renderSelectionState();
     };
     
-    document.getElementById('btn-clear-clipboard').onclick = () => {
+    document.getElementById('bar-clear-clipboard').onclick = () => {
         clipboard = { op: null, paths: null };
-        document.getElementById('paste-bar').classList.add('hidden');
+        updateSelectionUI();
     };
 
-    document.getElementById('btn-paste').onclick = async () => {
+    document.getElementById('bar-paste').onclick = async () => {
         if (!clipboard.paths || clipboard.paths.length === 0) return;
         const sep = currentPath.includes('\\') ? '\\' : '/';
         
@@ -783,8 +1012,8 @@ function setupGlobalEvents() {
         
         if (clipboard.op === 'cut') {
             clipboard = { op: null, paths: null };
-            document.getElementById('paste-bar').classList.add('hidden');
         }
+        updateSelectionUI();
         await navigateTo(currentPath, false);
     };
 
@@ -895,19 +1124,37 @@ function setupGlobalEvents() {
     };
 
     document.addEventListener('click', (e) => {
-        if (!e.target.closest('.file-item') && !e.target.closest('.bottom-bar') && !e.target.closest('.preview-popup') && !e.target.closest('.modal-dialog') && !e.target.closest('#picker-bar') && !e.target.closest('#save-bar')) {
-            document.getElementById('bottom-bar').classList.add('hidden');
+        if (!e.target.closest('.file-item') && !e.target.closest('.bottom-bar-wrapper') && !e.target.closest('.preview-popup') && !e.target.closest('.modal-dialog') && !e.target.closest('#picker-bar') && !e.target.closest('#save-bar')) {
+            selectedFiles = [];
+            selectedFile = null;
+            updateSelectionUI();
+            renderSelectionState();
         }
     });
 
     // --- APP MODE HANDLERS ---
+    const isModal = params.get('display') === 'modal';
+    if (isModal) {
+        document.querySelector('.app-container').classList.add('modal-view');
+    }
+
+    const closeModal = () => {
+        if (isModal) {
+            chrome.runtime.sendMessage({ action: 'close_modal' }, () => {
+                if (chrome.runtime.lastError) window.close();
+            });
+        } else {
+            window.close();
+        }
+    };
+
     if (APP_MODE === 'picker') {
         const bar = document.getElementById('picker-bar');
         if (bar) bar.classList.remove('hidden');
-        document.getElementById('bottom-bar').classList.add('hidden'); 
+        document.getElementById('bottom-bar-wrapper').classList.add('hidden'); 
 
         const btnCancel = document.getElementById('btn-picker-cancel');
-        if (btnCancel) btnCancel.onclick = () => window.close();
+        if (btnCancel) btnCancel.onclick = closeModal;
 
         const btnSelect = document.getElementById('btn-picker-select');
         if (btnSelect) {
@@ -921,7 +1168,7 @@ function setupGlobalEvents() {
                                 name: selectedFile.name,
                                 type: selectedFile.ext.replace('.', '')
                             }
-                        });
+                        }, () => { if (chrome.runtime.lastError) console.warn("Picker sendMessage error:", chrome.runtime.lastError.message); });
                     } else {
                         // Web app mode: Download instead?
                         window.open(`${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`, '_blank');
@@ -932,13 +1179,13 @@ function setupGlobalEvents() {
     } else if (APP_MODE === 'save') {
         const bar = document.getElementById('save-bar');
         if (bar) bar.classList.remove('hidden');
-        document.getElementById('bottom-bar').classList.add('hidden'); 
+        document.getElementById('bottom-bar-wrapper').classList.add('hidden'); 
 
         const inp = document.getElementById('save-filename-input');
         if (inp && !inp.value && SAVE_FILENAME_PARAM) inp.value = SAVE_FILENAME_PARAM;
         
         const btnCancel = document.getElementById('btn-save-cancel');
-        if (btnCancel) btnCancel.onclick = () => window.close();
+        if (btnCancel) btnCancel.onclick = closeModal;
 
         const btnConfirm = document.getElementById('btn-save-confirm');
         if (btnConfirm) {
@@ -946,13 +1193,23 @@ function setupGlobalEvents() {
                 const filename = inp ? inp.value : '';
                 if (!filename) return alert(t('error_no_filename'));
                 
+                if (!currentPath || currentPath === 'root') {
+                    return alert("Selecciona una carpeta física para guardar.");
+                }
+
+                console.log("[Bautilus] Intentando guardar:", {
+                    filename,
+                    currentPath,
+                    url: SAVE_URL_PARAM
+                });
+
                 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
                     chrome.runtime.sendMessage({
                         action: 'save_target_selected',
                         fileUrl: SAVE_URL_PARAM,
                         targetPath: currentPath,
                         filename: filename
-                    });
+                    }, () => { if (chrome.runtime.lastError) console.warn("Save sendMessage error:", chrome.runtime.lastError.message); });
                 } else {
                     // Web app mode: Use server to download
                     fetch(`${API_URL}/download-from-url`, {
@@ -963,6 +1220,30 @@ function setupGlobalEvents() {
                 }
             };
         }
+    }
+
+    // --- RESPONSIVE BOTTOM BAR SETUP ---
+    const bottomBar = document.getElementById('bottom-bar-wrapper');
+    const barMore = document.getElementById('bar-more');
+    const overflowMenu = document.getElementById('bar-overflow-menu');
+
+    if (barMore) {
+        barMore.onclick = (e) => {
+            e.stopPropagation();
+            overflowMenu.classList.toggle('hidden');
+        };
+    }
+
+    document.addEventListener('click', (e) => {
+        if (overflowMenu && !e.target.closest('.bar-overflow-wrapper')) {
+            overflowMenu.classList.add('hidden');
+        }
+    });
+
+    if (bottomBar && typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(() => {
+            updateBottomBarResponsive();
+        }).observe(bottomBar);
     }
 }
 
@@ -1057,7 +1338,7 @@ async function updateDownloads() {
                             e.stopPropagation();
                             const lastSep = Math.max(d.path.lastIndexOf('/'), d.path.lastIndexOf('\\'));
                             const dir = d.path.substring(0, lastSep) || (d.path.includes(':') ? d.path.split('\\')[0] + '\\' : '/');
-                            navigateTo(dir);
+                            navigateTo(dir, true, d.path);
                             popover.classList.add('hidden');
                         };
                     }
@@ -1099,7 +1380,14 @@ async function handleFileOpen(file, forceModal = false) {
     }
 }
 
+async function trackFileOpen(file) {
+    if (file.isDirectory) return;
+    lastOpenedData[file.path] = Date.now();
+    await storage.set({ lastOpened: lastOpenedData });
+}
+
 async function executeOpenWith(appId, file, url) {
+    await trackFileOpen(file);
     const viewers = getInternalViewers();
     if (viewers[appId]) {
         viewers[appId].action(file, url);
@@ -1449,7 +1737,11 @@ async function loadSystemPaths() {
                 side.appendChild(li);
             });
         }
-    } catch(e) { console.error("Error loading system paths:", e); }
+        return p;
+    } catch(e) { 
+        console.error("Error loading system paths:", e); 
+        return null;
+    }
 }
 
 async function loadCustomBookmarks() {

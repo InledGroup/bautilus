@@ -36,14 +36,21 @@
                 </div>
 
                 <div class="header-section header-end">
-                    <div class="search-entry">
-                        <i data-lucide="search" size="14"></i>
-                        <input type="text" id="search-input" placeholder="Buscar..." data-i18n-placeholder="search">
+                    <div class="search-wrapper">
+                        <div class="search-entry">
+                            <i data-lucide="search" size="14"></i>
+                            <input type="text" id="search-input" placeholder="Buscar..." data-i18n-placeholder="search">
+                        </div>
+                        <div id="search-progress-container" class="search-progress-container hidden">
+                            <div id="search-progress-bar" class="search-progress-bar"></div>
+                        </div>
                     </div>
                     <select id="sort-select" class="sort-select">
-                        <option value="name" data-i18n="sort_name">Nombre</option>
-                        <option value="date" data-i18n="sort_date">Fecha</option>
-                        <option value="size" data-i18n="sort_size">Tamaño</option>
+                        <option value="name-asc" data-i18n="sort_name_asc">A-Z</option>
+                        <option value="name-desc" data-i18n="sort_name_desc">Z-A</option>
+                        <option value="date-desc" data-i18n="sort_date_desc">Nuevo-Viejo</option>
+                        <option value="date-asc" data-i18n="sort_date_asc">Viejo-Nuevo</option>
+                        <option value="last-opened" data-i18n="sort_last_opened">Última vez abierto</option>
                     </select>
                     <select id="lang-select" class="sort-select" style="width: auto;">
                         <option value="es">ES</option>
@@ -96,44 +103,118 @@
             </div>
 
             <!-- Action Bar -->
-            <div id="bottom-bar" class="bottom-bar hidden">
-                <span id="selected-file-name" class="selected-label"></span>
-                <button id="bar-open" title="Abrir" data-i18n-title="open"><i data-lucide="external-link"></i></button>
-                <button id="bar-open-with" title="Abrir con..." data-i18n-title="open_with"><i data-lucide="layout-grid"></i></button>
-                <div class="bar-divider"></div>
-                <button id="bar-copy" title="Copiar" data-i18n-title="copy"><i data-lucide="copy"></i></button>
-                <button id="bar-cut" title="Cortar" data-i18n-title="cut"><i data-lucide="scissors"></i></button>
-                <button id="bar-rename" title="Renombrar" data-i18n-title="rename"><i data-lucide="pencil"></i></button>
-                <button id="bar-bookmark" title="Añadir marcador" data-i18n-title="add_bookmark"><i data-lucide="star"></i></button>
-                <button id="bar-delete" style="color:#ff7b7b;" title="Eliminar" data-i18n-title="delete"><i data-lucide="trash-2"></i></button>
-                <div class="bar-divider"></div>
-                <button id="bar-close"><i data-lucide="x"></i></button>
+            <div id="bottom-bar-wrapper" class="bottom-bar-wrapper hidden">
+                <div class="bar-info-row">
+                    <span id="selected-file-name" class="selected-label"></span>
+                </div>
+                
+                <div class="bar-main-row">
+                    <div class="bar-section-actions">
+                        <button id="bar-open" data-i18n-title="open">
+                            <i data-lucide="external-link"></i>
+                            <span data-i18n="open">Abrir</span>
+                        </button>
+                        <button id="bar-open-with" data-i18n-title="open_with">
+                            <i data-lucide="layout-grid"></i>
+                            <span data-i18n="open_with">Abrir con...</span>
+                        </button>
+                        <button id="bar-go-location" data-i18n-title="go_to_location" class="hidden">
+                            <i data-lucide="folder-search"></i>
+                            <span data-i18n="go_to_location">Ir a ubicación</span>
+                        </button>
+                        <div class="bar-divider"></div>
+                        <button id="bar-copy" data-i18n-title="copy">
+                            <i data-lucide="copy"></i>
+                            <span data-i18n="copy">Copiar</span>
+                        </button>
+                        <button id="bar-cut" data-i18n-title="cut">
+                            <i data-lucide="scissors"></i>
+                            <span data-i18n="cut">Cortar</span>
+                        </button>
+                        <button id="bar-rename" data-i18n-title="rename">
+                            <i data-lucide="pencil"></i>
+                            <span data-i18n="rename">Renombrar</span>
+                        </button>
+                        <button id="bar-bookmark" data-i18n-title="add_bookmark">
+                            <i data-lucide="star"></i>
+                            <span data-i18n="add_bookmark">Marcador</span>
+                        </button>
+                        <button id="bar-delete" style="color:#ff7b7b;" data-i18n-title="delete">
+                            <i data-lucide="trash-2"></i>
+                            <span data-i18n="delete">Eliminar</span>
+                        </button>
+                        
+                        <div class="bar-overflow-wrapper">
+                            <button id="bar-more" class="hidden">
+                                <i data-lucide="more-horizontal"></i>
+                                <span data-i18n="more">Más</span>
+                            </button>
+                            <div id="bar-overflow-menu" class="overflow-menu hidden"></div>
+                        </div>
+
+                        <!-- Paste specific actions -->
+                        <button id="bar-paste" class="hidden" style="color:var(--accent);">
+                            <i data-lucide="clipboard-paste"></i>
+                            <span data-i18n="paste_here">Pegar aquí</span>
+                        </button>
+                        <button id="bar-clear-clipboard" class="hidden">
+                            <i data-lucide="x-circle"></i>
+                            <span data-i18n="cancel">Cancelar</span>
+                        </button>
+                    </div>
+
+                    <div class="bar-section-close">
+                        <button id="bar-close">
+                            <i data-lucide="x"></i>
+                            <span data-i18n="close">Cerrar</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- Picker Action Bar -->
-            <div id="picker-bar" class="bottom-bar hidden" style="background:var(--bg-secondary); border-top:1px solid var(--border); z-index: 100;">
-                <div style="flex:1;">
-                    <span id="picker-filename" style="margin-left:10px; font-weight:500;"></span>
+            <div id="picker-bar" class="bottom-bar-wrapper hidden">
+                <div class="bar-info-row">
+                    <span id="picker-filename" class="selected-label"></span>
                 </div>
-                <button id="btn-picker-cancel" class="btn-flat" style="margin-right:10px;" data-i18n="cancel">Cancelar</button>
-                <button id="btn-picker-select" class="btn-flat primary" disabled data-i18n="select">Seleccionar</button>
+                <div class="bar-main-row">
+                    <div class="bar-section-actions">
+                        <!-- Space for future picker actions if needed -->
+                    </div>
+                    <div class="bar-section-close" style="display: flex; border-left: none !important;">
+                        <button id="btn-picker-cancel">
+                            <i data-lucide="x"></i>
+                            <span data-i18n="cancel">Cancelar</span>
+                        </button>
+                        <button id="btn-picker-select" class="primary-action-btn" disabled>
+                            <i data-lucide="check-circle"></i>
+                            <span data-i18n="select">Seleccionar</span>
+                        </button>
+                    </div>
+                </div>
             </div>
             
             <!-- Save Action Bar -->
-            <div id="save-bar" class="bottom-bar hidden" style="background:var(--bg-secondary); border-top:1px solid var(--border); z-index: 100;">
-                 <div style="flex:1; display:flex; gap:10px; align-items:center; padding-left:10px;">
-                    <span data-i18n="name_label">Nombre:</span>
-                    <input type="text" id="save-filename-input" class="search-entry" style="flex:1; max-width:300px; color: var(--text-main); background: var(--bg-main); border: 1px solid var(--border);">
+            <div id="save-bar" class="bottom-bar-wrapper hidden">
+                 <div class="bar-info-row" style="gap:15px; justify-content: flex-start;">
+                    <span data-i18n="name_label" style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Nombre:</span>
+                    <input type="text" id="save-filename-input" class="search-entry" style="flex:1; max-width:400px; color: #ffffff; background: rgba(255,255,255,0.05); border: 1px solid var(--border) !important; height: 32px; border-radius: 6px; padding: 0 10px;">
                 </div>
-                <button id="btn-save-cancel" class="btn-flat" style="margin-right:10px;" data-i18n="cancel">Cancelar</button>
-                <button id="btn-save-confirm" class="btn-flat primary" data-i18n="save_here">Guardar Aquí</button>
-            </div>
-            
-            <!-- Paste & Cancel Action Bar -->
-            <div id="paste-bar" class="bottom-bar hidden" style="background:#3584e4; bottom:100px;">
-                <button id="btn-paste" style="color:white; font-weight:600;"><i data-lucide="clipboard"></i> <span style="margin-left:8px;" data-i18n="paste_here">Pegar aquí</span></button>
-                <div class="bar-divider" style="background:rgba(255,255,255,0.3);"></div>
-                <button id="btn-clear-clipboard" style="color:white; opacity:0.8;"><i data-lucide="x"></i></button>
+                <div class="bar-main-row">
+                    <div class="bar-section-actions">
+                        <!-- Space for context if needed -->
+                    </div>
+                    <div class="bar-section-close" style="display: flex; border-left: none !important;">
+                        <button id="btn-save-cancel">
+                            <i data-lucide="x"></i>
+                            <span data-i18n="cancel">Cancelar</span>
+                        </button>
+                        <button id="btn-save-confirm" class="primary-action-btn">
+                            <i data-lucide="save"></i>
+                            <span data-i18n="save_here">Guardar Aquí</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </main>
     </div>

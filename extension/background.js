@@ -48,16 +48,43 @@ chrome.runtime.onInstalled.addListener(checkUpdates);
 let cachedIconBitmap = null;
 
 async function updateActionIcon(activeDownloads) {
-    const downloading = activeDownloads.filter(d => d.status === 'downloading');
+    const downloading = activeDownloads ? activeDownloads.filter(d => d.status === 'downloading') : [];
     const count = downloading.length;
+    
+    console.log(`[Bautilus] Actualizando icono. Descargas activas: ${count}`);
+
+    // Create canvas for drawing (even for reset to ensure clean overwrite)
+    const canvas = new OffscreenCanvas(32, 32);
+    const ctx = canvas.getContext('2d');
+
+    // Load base icon if not cached
+    if (!cachedIconBitmap) {
+        try {
+            const response = await fetch(chrome.runtime.getURL('bautilus.png'));
+            const blob = await response.blob();
+            cachedIconBitmap = await createImageBitmap(blob);
+            console.log("[Bautilus] Icono base cargado en caché.");
+        } catch (e) {
+            console.error("[Bautilus] Error cargando bitmap:", e);
+        }
+    }
 
     if (count === 0) {
         chrome.action.setBadgeText({ text: '' });
-        chrome.action.setIcon({ path: {
-            "16": "bautilus.png",
-            "48": "bautilus.png",
-            "128": "bautilus.png"
-        }});
+        
+        // Clear and draw just the base logo
+        ctx.clearRect(0, 0, 32, 32);
+        if (cachedIconBitmap) {
+            ctx.drawImage(cachedIconBitmap, 0, 0, 32, 32);
+        } else {
+            // Fallback if image fails
+            ctx.fillStyle = '#e01b24';
+            ctx.fillRect(8, 8, 16, 16);
+        }
+        
+        const imageData = ctx.getImageData(0, 0, 32, 32);
+        chrome.action.setIcon({ imageData: { "32": imageData } });
+        console.log("[Bautilus] Icono reseteado a estado original.");
         return;
     }
 
@@ -76,22 +103,8 @@ async function updateActionIcon(activeDownloads) {
     });
 
     const percent = totalBytes > 0 ? receivedBytes / totalBytes : 0;
+    console.log(`[Bautilus] Progreso total: ${Math.round(percent * 100)}%`);
     
-    // Draw progress circle on icon
-    const canvas = new OffscreenCanvas(32, 32);
-    const ctx = canvas.getContext('2d');
-
-    // Load base icon if not cached
-    if (!cachedIconBitmap) {
-        try {
-            const response = await fetch(chrome.runtime.getURL('bautilus.png'));
-            const blob = await response.blob();
-            cachedIconBitmap = await createImageBitmap(blob);
-        } catch (e) {
-            console.error("Error loading icon bitmap:", e);
-        }
-    }
-
     ctx.clearRect(0, 0, 32, 32);
     
     // Draw the Bautilus logo in the center (scaled down to fit ring)
@@ -126,9 +139,13 @@ async function pollDownloads() {
             if (res.ok) {
                 const downloads = await res.json();
                 updateActionIcon(downloads);
+            } else {
+                // If response not OK, reset icon as safety measure
+                updateActionIcon([]);
             }
         } catch (e) {
-            // Server might be down, ignore
+            // Server might be down, reset icon to avoid showing stuck progress
+            updateActionIcon([]);
         }
     });
 }
@@ -136,6 +153,17 @@ async function pollDownloads() {
 setInterval(pollDownloads, 2000);
 
 let pickerRequestTabId = null;
+// Helper to safely send message to tab with fallback to window
+async function sendToTabOrOpenWindow(tabId, message, fallbackOptions) {
+    console.log("[Bautilus Background] Intentando enviar mensaje a tab:", tabId, message.action);
+    try {
+        await chrome.tabs.sendMessage(tabId, message);
+        console.log("[Bautilus Background] Mensaje enviado con éxito.");
+    } catch (e) {
+        console.warn("[Bautilus Background] No se pudo contactar con content script, usando popup.", e.message);
+        chrome.windows.create(fallbackOptions);
+    }
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // 0. Manual Update Check
@@ -148,26 +176,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return true; 
     }
 
+    if (msg.action === 'close_modal') {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.sendMessage(tabs[0].id, { action: 'close_bautilus_modal' }).catch(() => {});
+            }
+        });
+        sendResponse({});
+        return;
+    }
+
     // 1. Upload Request from Content Script
     if (msg.action === 'open_picker') {
-        pickerRequestTabId = sender.tab.id;
-        chrome.windows.create({
+        const pickerUrl = chrome.runtime.getURL('index.html?mode=picker&display=modal');
+        sendToTabOrOpenWindow(sender.tab.id, { 
+            action: 'show_bautilus_modal', 
+            url: pickerUrl 
+        }, {
             url: chrome.runtime.getURL('index.html?mode=picker'),
             type: 'popup',
             width: 900,
             height: 600
         });
+        sendResponse({});
     } 
     // 2. File Selected in Bautilus UI (for Upload)
     else if (msg.action === 'file_selected_in_picker') {
-        if (pickerRequestTabId) {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (!tabs[0]) return;
+            const targetTabId = tabs[0].id;
             const { url, name, type } = msg.file;
-            const targetTabId = parseInt(pickerRequestTabId);
             
             fetch(url)
                 .then(res => res.arrayBuffer())
                 .then(buffer => {
-                    // Convert ArrayBuffer to Base64 (Safer for Chrome messaging)
                     const base64 = btoa(
                         new Uint8Array(buffer)
                             .reduce((data, byte) => data + String.fromCharCode(byte), '')
@@ -175,20 +217,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     
                     chrome.tabs.sendMessage(targetTabId, {
                         action: 'file_selected',
-                        file: {
-                            base64: base64,
-                            name: name,
-                            type: type
-                        }
-                    });
+                        file: { base64: base64, name: name, type: type }
+                    }).catch(() => {});
+                    
+                    chrome.tabs.sendMessage(targetTabId, { action: 'close_bautilus_modal' }).catch(() => {});
                 })
                 .catch(err => console.error("Error fetching file for picker:", err));
-
-            pickerRequestTabId = null;
-            if (sender.tab && sender.tab.windowId) {
-                chrome.windows.remove(sender.tab.windowId);
-            }
-        }
+        });
+        sendResponse({});
     }
     // 3. Save Target Selected in Bautilus UI (for Download)
     else if (msg.action === 'save_target_selected') {
@@ -196,9 +232,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         
         chrome.storage.local.get(['serverUrl'], async (r) => {
             const apiBase = r.serverUrl || 'http://localhost:3001';
-            
             try {
-                // Send request to local server to download the file
                 const res = await fetch(`${apiBase}/download-from-url`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -206,63 +240,57 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 });
 
                 if (res.ok) {
-                    const data = await res.json();
-                    console.log("Download started on server:", data.downloadId);
-                    // Start polling progress immediately to update UI
                     pollDownloads();
-                } else {
-                    console.error("Download failed on server");
                 }
-            } catch (err) {
-                console.error("Fetch error on server download:", err);
+            } catch (err) { 
+                console.error("Fetch error on server download:", err); 
             }
-        });
 
-        // Close the popup window
-        if (sender.tab && sender.tab.windowId) {
-            chrome.windows.remove(sender.tab.windowId);
-        }
+            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, { action: 'close_bautilus_modal' }).catch(() => {
+                        if (sender.tab && sender.tab.windowId) chrome.windows.remove(sender.tab.windowId).catch(() => {});
+                    });
+                } else if (sender.tab && sender.tab.windowId) {
+                    chrome.windows.remove(sender.tab.windowId).catch(() => {});
+                }
+            });
+        });
+        sendResponse({});
     }
 });
 
 // Intercept Downloads
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-    // Skip if it looks like a blob (often internal) or if user disabled interception
-    // For now, intercept everything except blobs to be safe?
-    if (item.url.startsWith('blob:') || item.url.startsWith('data:')) {
-        // Blobs are hard to pass to server via URL. 
-        // We let the browser handle them naturally or implemented complex blob extraction.
-        return; // Let browser handle it
-    }
+    if (item.url.startsWith('blob:') || item.url.startsWith('data:')) return;
 
-    // Capture suggested filename
     const filename = item.filename;
     const url = item.url;
 
-    // Delay cancellation slightly to avoid "Download must be in progress" errors
-    // and ensure the download is actually registered.
-    setTimeout(() => {
-        chrome.downloads.cancel(item.id, () => {
-            if (chrome.runtime.lastError) {
-                // Ignore if it was already handled or not yet in progress
-                console.warn('Cancel error:', chrome.runtime.lastError.message);
-            }
-            // Erase from history to avoid "Canceled" entry clutter
-            chrome.downloads.erase({id: item.id});
-        });
-    }, 100); // Small delay to let browser stabilize
-
-    // Open Bautilus Save UI
-    // Pass info to the popup via URL params
-    const winUrl = `index.html?mode=save&filename=${encodeURIComponent(filename)}&url=${encodeURIComponent(url)}`;
-    
-    chrome.windows.create({
-        url: chrome.runtime.getURL(winUrl),
-        type: 'popup',
-        width: 900,
-        height: 600
+    // Cancelar INMEDIATAMENTE para que el sistema operativo no abra su diálogo
+    chrome.downloads.cancel(item.id, () => {
+        if (!chrome.runtime.lastError) {
+            chrome.downloads.erase({id: item.id}, () => {
+                if (chrome.runtime.lastError) { /* ignore */ }
+            });
+        }
     });
-    
-    // We must return true if we call suggest asynchronously, but here we cancel immediately.
-    // So we don't call suggest.
+
+    // Abrir nuestra UI modal
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (tabs[0]) {
+            const modalUrl = chrome.runtime.getURL(`index.html?mode=save&display=modal&filename=${encodeURIComponent(filename)}&url=${encodeURIComponent(url)}`);
+            const windowUrl = chrome.runtime.getURL(`index.html?mode=save&filename=${encodeURIComponent(filename)}&url=${encodeURIComponent(url)}`);
+            
+            sendToTabOrOpenWindow(tabs[0].id, { 
+                action: 'show_bautilus_modal', 
+                url: modalUrl 
+            }, {
+                url: windowUrl,
+                type: 'popup',
+                width: 900,
+                height: 600
+            });
+        }
+    });
 });

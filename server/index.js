@@ -276,6 +276,58 @@ app.get('/files', async (req, res) => {
     }
 });
 
+// Recursive search with streaming (SSE)
+app.get('/search', async (req, res) => {
+    const { query, rootPath } = req.query;
+    if (!query) return res.json([]);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const sendMatch = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const startPath = getSafePath(rootPath);
+    let count = 0;
+    const maxResults = 1000;
+
+    const searchInternal = async (dir) => {
+        if (count >= maxResults) return;
+        try {
+            const entries = await fs.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (count >= maxResults) break;
+                
+                const fullPath = path.join(dir, entry.name);
+                if (entry.name.toLowerCase().includes(query.toLowerCase())) {
+                    try {
+                        const stats = await fs.stat(fullPath);
+                        sendMatch({
+                            name: entry.name,
+                            path: fullPath,
+                            isDirectory: entry.isDirectory(),
+                            size: stats.size,
+                            mtime: stats.mtime,
+                            ext: path.extname(entry.name).toLowerCase()
+                        });
+                        count++;
+                    } catch (e) { /* ignore inaccessible */ }
+                }
+                
+                if (entry.isDirectory()) {
+                    await searchInternal(fullPath);
+                }
+            }
+        } catch (e) { /* ignore restricted dirs */ }
+    };
+
+    await searchInternal(startPath);
+    res.write('event: end\ndata: done\n\n');
+    res.end();
+});
+
 // Create folder
 app.post('/create-folder', async (req, res) => {
     try {
@@ -453,13 +505,22 @@ app.post('/save', async (req, res) => {
                             lastSave = Date.now();
                         }
                     }
+                    
+                    // Ensure we show 100% even if content-length was slightly off
+                    if (activeDownloads[downloadId].total > 0) {
+                        activeDownloads[downloadId].received = activeDownloads[downloadId].total;
+                    }
+
                     fileStream.end();
                     
-                    // Rename .part to final filename
-                    await fs.move(partPath, fullPath, { overwrite: true });
-                    
+                    // Mark as completed IMMEDIATELY so the extension sees it in the next poll
                     activeDownloads[downloadId].status = 'completed';
                     console.log(`Download complete: ${safeFilename}`);
+
+                    // Rename .part to final filename
+                    if (await fs.pathExists(partPath)) {
+                        await fs.move(partPath, fullPath, { overwrite: true });
+                    }
                     
                     await saveDownloads();
                 } catch (err) {
