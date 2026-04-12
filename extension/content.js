@@ -2,21 +2,39 @@ let activeInput = null;
 
 // Listen for clicks on file inputs
 document.addEventListener('click', (event) => {
+    // Evitar interceptar en páginas de Bautilus (local o servidor)
+    if (document.getElementById('file-view') || 
+        window.location.protocol === 'chrome-extension:' ||
+        document.body.classList.contains('bautilus-page')) {
+        return;
+    }
+
     const target = event.target;
+    // Interceptar clicks en el input file o en labels asociados
+    let fileInput = null;
     if (target.tagName === 'INPUT' && target.type === 'file') {
-        // Prevent the native file picker
+        fileInput = target;
+    } else if (target.tagName === 'LABEL' && target.htmlFor) {
+        fileInput = document.getElementById(target.htmlFor);
+    } else {
+        // Buscar si el click fue dentro de un label que contiene un input file
+        fileInput = target.closest('label')?.querySelector('input[type="file"]');
+    }
+
+    if (fileInput && fileInput.type === 'file') {
+        // Evitar el selector nativo
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
         
-        activeInput = target;
+        activeInput = fileInput;
+        console.log("[Bautilus] Interceptado selector de archivos para:", activeInput);
         
-        // Ask background to open Bautilus picker
         chrome.runtime.sendMessage({ action: 'open_picker' }, () => {
-            if (chrome.runtime.lastError) console.warn("[Bautilus] Background not ready or error:", chrome.runtime.lastError.message);
+            if (chrome.runtime.lastError) console.warn("[Bautilus] Background not ready:", chrome.runtime.lastError.message);
         });
     }
-}, true); // Capture phase
+}, true); // Fase de captura para llegar antes que los scripts de la web
 
 // Listen for the file selection from the popup via background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -133,12 +151,25 @@ function handleFileSelection(inputElement, fileData) {
         // Use DataTransfer to simulate file selection
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(file);
+        
+        // IMPORTANT: Some frameworks check for the 'files' property being updated.
+        // We set it directly.
         inputElement.files = dataTransfer.files;
 
-        // Dispatch events so the website reacts
-        inputElement.dispatchEvent(new Event('change', { bubbles: true }));
-        inputElement.dispatchEvent(new Event('input', { bubbles: true }));
+        // Dispatch multiple events to ensure the website reacts.
+        // Some use 'change', some 'input', some even 'click' or 'blur'.
+        const events = ['input', 'change'];
+        events.forEach(eventName => {
+            const event = new Event(eventName, { bubbles: true, cancelable: true });
+            // For React and other frameworks that might override the value setter
+            inputElement.dispatchEvent(event);
+        });
         
+        // Trigger a 'change' event specifically for file inputs
+        const changeEvent = new Event('change', { bubbles: true });
+        Object.defineProperty(changeEvent, 'target', {writable: false, value: inputElement});
+        inputElement.dispatchEvent(changeEvent);
+
         console.log("Bautilus: Successfully populated input with", file.name);
         
     } catch (error) {

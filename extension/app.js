@@ -141,7 +141,10 @@ const translations = {
         server_config: "Configuración del Servidor",
         apply: "Aplicar",
         save_server: "Guardar en Servidor",
-        connection_error: "Error de conexión con el servidor"
+        connection_error: "Error de conexión con el servidor",
+        upload: "Subir archivos",
+        upload_success: "Archivos subidos con éxito.",
+        upload_error: "Error al subir archivos."
     },
     en: {
         places: "Places",
@@ -233,7 +236,10 @@ const translations = {
                 server_config: "Server Configuration",
                 apply: "Apply",
                 save_server: "Save to Server",
-                connection_error: "Connection error with server"
+                connection_error: "Connection error with server",
+                upload: "Upload files",
+                upload_success: "Files uploaded successfully.",
+                upload_error: "Error uploading files."
         ,
         settings: "Settings",
         server_interface: "Interface (IP)",
@@ -896,6 +902,41 @@ function setupGlobalEvents() {
 
     document.getElementById('btn-settings').onclick = () => openSettingsModal();
 
+    const uploadInput = document.getElementById('file-upload-input');
+    document.getElementById('btn-upload').onclick = () => {
+        if (!currentPath || currentPath === 'root') {
+            return alert("Selecciona una carpeta física para subir archivos.");
+        }
+        uploadInput.click();
+    };
+
+    uploadInput.onchange = async () => {
+        if (uploadInput.files.length === 0) return;
+        
+        const formData = new FormData();
+        for (const file of uploadInput.files) {
+            formData.append('files', file);
+        }
+
+        try {
+            const res = await fetch(`${API_URL}/upload?path=${encodeURIComponent(currentPath)}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (res.ok) {
+                // alert(t('upload_success'));
+                uploadInput.value = ''; // Reset
+                navigateTo(currentPath, false);
+            } else {
+                alert(t('upload_error'));
+            }
+        } catch (e) {
+            console.error("Upload error:", e);
+            alert(t('upload_error'));
+        }
+    };
+
     document.getElementById('btn-save-ext-config').onclick = async () => {
         const newUrl = document.getElementById('ext-api-url').value;
         if (newUrl) {
@@ -1156,6 +1197,36 @@ function setupGlobalEvents() {
         const btnCancel = document.getElementById('btn-picker-cancel');
         if (btnCancel) btnCancel.onclick = closeModal;
 
+        const btnPickerUpload = document.getElementById('btn-picker-upload');
+        const pickerUploadInput = document.getElementById('picker-upload-input');
+        
+        if (btnPickerUpload) {
+            btnPickerUpload.onclick = () => pickerUploadInput.click();
+        }
+
+        if (pickerUploadInput) {
+            pickerUploadInput.onchange = async () => {
+                const file = pickerUploadInput.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                        chrome.runtime.sendMessage({
+                            action: 'file_selected_in_picker',
+                            file: {
+                                base64: base64,
+                                name: file.name,
+                                type: file.type
+                            }
+                        }, () => { if (chrome.runtime.lastError) console.warn("Picker sendMessage error:", chrome.runtime.lastError.message); });
+                    }
+                };
+                reader.readAsDataURL(file);
+            };
+        }
+
         const btnSelect = document.getElementById('btn-picker-select');
         if (btnSelect) {
             btnSelect.onclick = () => {
@@ -1313,8 +1384,8 @@ async function updateDownloads() {
                     item.className = 'download-item';
                     
                     const percent = d.total > 0 ? Math.min(100, Math.round((d.received / d.total) * 100)) : 0;
-                    const statusClass = d.status === 'completed' ? 'completed' : (d.status === 'error' ? 'error' : '');
-                    let statusText = d.status === 'completed' ? 'Completado' : (d.status === 'error' ? 'Error' : `${percent}%`);
+                    const statusClass = d.status === 'completed' ? 'completed' : (d.status === 'error' ? 'error' : (d.status === 'paused' ? 'paused' : ''));
+                    let statusText = d.status === 'completed' ? 'Completado' : (d.status === 'error' ? 'Error' : (d.status === 'paused' ? 'Pausado' : `${percent}%`));
                     
                     if (d.status === 'downloading' && d.total === 0) statusText = 'Descargando...';
 
@@ -1326,15 +1397,24 @@ async function updateDownloads() {
                         <div class="download-progress-container">
                             <div class="download-progress-bar ${statusClass}" style="width: ${d.status === 'completed' ? '100%' : percent + '%'}"></div>
                         </div>
-                        ${d.status === 'completed' ? `
                         <div class="download-actions">
-                            <button class="download-btn-action">Ver ubicación</button>
-                        </div>` : ''}
+                            ${d.status === 'completed' ? `
+                                <button class="download-btn-action btn-view-loc" title="Ver ubicación"><i data-lucide="folder"></i></button>
+                            ` : `
+                                ${d.status === 'downloading' ? `
+                                    <button class="download-btn-action btn-pause" title="Pausar"><i data-lucide="pause"></i></button>
+                                ` : (d.status === 'paused' || d.status === 'error' ? `
+                                    <button class="download-btn-action btn-resume" title="Reanudar"><i data-lucide="play"></i></button>
+                                ` : '')}
+                            `}
+                            <button class="download-btn-action btn-delete" title="Eliminar"><i data-lucide="trash-2"></i></button>
+                        </div>
                     `;
 
-                    const btn = item.querySelector('.download-btn-action');
-                    if (btn) {
-                        btn.onclick = (e) => {
+                    // Action listeners
+                    const btnView = item.querySelector('.btn-view-loc');
+                    if (btnView) {
+                        btnView.onclick = (e) => {
                             e.stopPropagation();
                             const lastSep = Math.max(d.path.lastIndexOf('/'), d.path.lastIndexOf('\\'));
                             const dir = d.path.substring(0, lastSep) || (d.path.includes(':') ? d.path.split('\\')[0] + '\\' : '/');
@@ -1342,8 +1422,51 @@ async function updateDownloads() {
                             popover.classList.add('hidden');
                         };
                     }
+
+                    const btnPause = item.querySelector('.btn-pause');
+                    if (btnPause) {
+                        btnPause.onclick = async (e) => {
+                            e.stopPropagation();
+                            await fetch(`${API_URL}/pause-download`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ id: d.id })
+                            });
+                            updateDownloads();
+                        };
+                    }
+
+                    const btnResume = item.querySelector('.btn-resume');
+                    if (btnResume) {
+                        btnResume.onclick = async (e) => {
+                            e.stopPropagation();
+                            await fetch(`${API_URL}/resume-download`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ id: d.id })
+                            });
+                            updateDownloads();
+                        };
+                    }
+
+                    const btnDelete = item.querySelector('.btn-delete');
+                    if (btnDelete) {
+                        btnDelete.onclick = async (e) => {
+                            e.stopPropagation();
+                            if (confirm('¿Eliminar esta descarga y su archivo?')) {
+                                await fetch(`${API_URL}/delete-download`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ id: d.id })
+                                });
+                                updateDownloads();
+                            }
+                        };
+                    }
+
                     list.appendChild(item);
                 });
+                if (window.lucide) lucide.createIcons();
             }
         }
     } catch (e) { 

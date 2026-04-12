@@ -458,9 +458,14 @@ button { border: none !important; background: transparent !important; cursor: po
     background: #e01b24;
 }
 
+.download-progress-bar.paused {
+    background: #ed7d31;
+}
+
 .download-actions {
     display: flex;
     gap: 12px;
+    margin-top: 4px;
 }
 
 .download-btn-action {
@@ -471,10 +476,18 @@ button { border: none !important; background: transparent !important; cursor: po
     font-weight: 600;
     cursor: pointer;
     padding: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .download-btn-action:hover {
     text-decoration: underline;
+}
+
+.download-btn-action svg {
+    width: 14px;
+    height: 14px;
 }
 
 .btn-icon-small {

@@ -152,7 +152,8 @@ async function pollDownloads() {
 
 setInterval(pollDownloads, 2000);
 
-let pickerRequestTabId = null;
+let lastPickerRequestTabId = null;
+
 // Helper to safely send message to tab with fallback to window
 async function sendToTabOrOpenWindow(tabId, message, fallbackOptions) {
     console.log("[Bautilus Background] Intentando enviar mensaje a tab:", tabId, message.action);
@@ -186,8 +187,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
     }
 
-    // 1. Upload Request from Content Script
+    // 1. Upload Request from Content Script (Website wants a file)
     if (msg.action === 'open_picker') {
+        lastPickerRequestTabId = sender.tab.id;
         const pickerUrl = chrome.runtime.getURL('index.html?mode=picker&display=modal');
         sendToTabOrOpenWindow(sender.tab.id, { 
             action: 'show_bautilus_modal', 
@@ -200,30 +202,43 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         sendResponse({});
     } 
-    // 2. File Selected in Bautilus UI (for Upload)
+    // 2. File Selected in Bautilus UI (Returning file to Website)
     else if (msg.action === 'file_selected_in_picker') {
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            if (!tabs[0]) return;
-            const targetTabId = tabs[0].id;
-            const { url, name, type } = msg.file;
+        const targetTabId = lastPickerRequestTabId;
+        if (!targetTabId) return sendResponse({error: "No requesting tab found"});
+
+        const { url, name, type, base64: providedBase64 } = msg.file;
+        
+        const processFile = (base64) => {
+            chrome.tabs.sendMessage(targetTabId, {
+                action: 'file_selected',
+                file: { base64: base64, name: name, type: type }
+            }).catch(() => {});
             
+            // Cerrar el modal o popup
+            chrome.tabs.sendMessage(targetTabId, { action: 'close_bautilus_modal' }).catch(() => {});
+            if (sender.tab && sender.tab.windowId && sender.tab.id !== targetTabId) {
+                chrome.windows.remove(sender.tab.windowId).catch(() => {});
+            }
+        };
+
+        if (providedBase64) {
+            processFile(providedBase64);
+        } else {
             fetch(url)
                 .then(res => res.arrayBuffer())
                 .then(buffer => {
-                    const base64 = btoa(
-                        new Uint8Array(buffer)
-                            .reduce((data, byte) => data + String.fromCharCode(byte), '')
-                    );
-                    
-                    chrome.tabs.sendMessage(targetTabId, {
-                        action: 'file_selected',
-                        file: { base64: base64, name: name, type: type }
-                    }).catch(() => {});
-                    
-                    chrome.tabs.sendMessage(targetTabId, { action: 'close_bautilus_modal' }).catch(() => {});
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    const len = bytes.byteLength;
+                    for (let i = 0; i < len; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    const base64 = btoa(binary);
+                    processFile(base64);
                 })
                 .catch(err => console.error("Error fetching file for picker:", err));
-        });
+        }
         sendResponse({});
     }
     // 3. Save Target Selected in Bautilus UI (for Download)

@@ -73,6 +73,9 @@
                             </div>
                         </div>
                     </div>
+                    <button id="btn-upload" class="btn-icon" title="Subir archivos" data-i18n-title="upload"><i data-lucide="upload"></i></button>
+                    <input type="file" id="file-upload-input" multiple style="display:none;">
+                    <input type="file" id="picker-upload-input" style="display:none;">
                     <button id="btn-view-toggle" class="btn-icon"><i data-lucide="layout-grid"></i></button>
                     <button id="btn-new-folder" class="btn-icon"><i data-lucide="folder-plus"></i></button>
                 </div>
@@ -179,7 +182,10 @@
                 </div>
                 <div class="bar-main-row">
                     <div class="bar-section-actions">
-                        <!-- Space for future picker actions if needed -->
+                        <button id="btn-picker-upload">
+                            <i data-lucide="upload"></i>
+                            <span data-i18n="upload">Subir</span>
+                        </button>
                     </div>
                     <div class="bar-section-close" style="display: flex; border-left: none !important;">
                         <button id="btn-picker-cancel">

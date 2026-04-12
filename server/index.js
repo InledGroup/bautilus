@@ -4,6 +4,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const archiver = require('archiver');
 const AdmZip = require('adm-zip');
+const multer = require('multer');
 const open = async (...args) => {
     try {
         const { default: openApp } = await import('open');
@@ -129,16 +130,16 @@ async function initServer() {
     const DOWNLOADS_FILE = path.join(CONFIG_DIR, 'downloads.json');
 
     let activeDownloads = {};
+    let downloadAborts = {}; // { downloadId: AbortController }
 
     async function loadDownloads() {
         try {
             if (await fs.pathExists(DOWNLOADS_FILE)) {
                 activeDownloads = await fs.readJson(DOWNLOADS_FILE);
-                // Reset status of "downloading" items to "interrupted" or "unknown" on restart
+                // Reset status of "downloading" items to "paused" on restart so they can be resumed
                 for (const id in activeDownloads) {
                     if (activeDownloads[id].status === 'downloading') {
-                        activeDownloads[id].status = 'error';
-                        activeDownloads[id].error = 'Server restarted';
+                        activeDownloads[id].status = 'paused';
                     }
                 }
             }
@@ -158,12 +159,102 @@ async function initServer() {
 
     await loadDownloads();
 
+    // Common function to perform/resume a download
+    async function performDownload(downloadId) {
+        if (!activeDownloads[downloadId]) return;
+        
+        const d = activeDownloads[downloadId];
+        const partPath = d.path + '.bautilus-part';
+        
+        // If already downloading, don't start another
+        if (d.status === 'downloading' && downloadAborts[downloadId]) return;
+
+        const controller = new AbortController();
+        downloadAborts[downloadId] = controller;
+        d.status = 'downloading';
+        d.error = null;
+        await saveDownloads();
+
+        try {
+            const startByte = d.received || 0;
+            const headers = {};
+            if (startByte > 0) {
+                headers['Range'] = `bytes=${startByte}-`;
+            }
+
+            const response = await fetch(d.url, { 
+                headers,
+                signal: controller.signal 
+            });
+
+            if (!response.ok && response.status !== 206) {
+                throw new Error(`Failed to fetch ${d.url}: ${response.statusText} (${response.status})`);
+            }
+
+            if (!response.body) {
+                throw new Error("No response body");
+            }
+
+            // If server doesn't support range and we asked for it, it might return 200 instead of 206
+            // In that case, we must restart from 0
+            let actualFileStream;
+            if (response.status === 200 && startByte > 0) {
+                console.log(`Server does not support Range for ${d.url}. Restarting download from 0.`);
+                d.received = 0;
+                actualFileStream = fs.createWriteStream(partPath);
+            } else {
+                actualFileStream = fs.createWriteStream(partPath, { flags: 'a' });
+            }
+
+            const bodyStream = response.body.getReader ? Readable.fromWeb(response.body) : response.body;
+
+            try {
+                let lastSave = Date.now();
+                for await (const chunk of bodyStream) {
+                    d.received += chunk.length;
+                    actualFileStream.write(chunk);
+                    
+                    if (Date.now() - lastSave > 2000) {
+                        await saveDownloads();
+                        lastSave = Date.now();
+                    }
+                }
+                
+                actualFileStream.end();
+                
+                if (d.status === 'downloading') {
+                    d.status = 'completed';
+                    if (d.total > 0) d.received = d.total;
+                    
+                    if (await fs.pathExists(partPath)) {
+                        await fs.move(partPath, d.path, { overwrite: true });
+                    }
+                    console.log(`Download complete: ${d.filename}`);
+                }
+            } finally {
+                actualFileStream.end();
+                delete downloadAborts[downloadId];
+                await saveDownloads();
+            }
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                console.log(`Download ${downloadId} paused/aborted.`);
+                d.status = 'paused';
+            } else {
+                console.error("Stream error:", err);
+                d.status = 'error';
+                d.error = err.message;
+            }
+            delete downloadAborts[downloadId];
+            await saveDownloads();
+        }
+    }
+
     app.get('/downloads', (req, res) => {
         res.json(Object.values(activeDownloads));
     });
 
     app.post('/clear-downloads', async (req, res) => {
-        // Clear only completed or error downloads
         for (const id in activeDownloads) {
             if (activeDownloads[id].status !== 'downloading') {
                 delete activeDownloads[id];
@@ -171,6 +262,48 @@ async function initServer() {
         }
         await saveDownloads();
         res.json({ success: true });
+    });
+
+    app.post('/pause-download', async (req, res) => {
+        const { id } = req.body;
+        if (downloadAborts[id]) {
+            downloadAborts[id].abort();
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Download not active or already paused' });
+        }
+    });
+
+    app.post('/resume-download', async (req, res) => {
+        const { id } = req.body;
+        if (activeDownloads[id] && activeDownloads[id].status !== 'downloading') {
+            performDownload(id);
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Download not found or already active' });
+        }
+    });
+
+    app.post('/delete-download', async (req, res) => {
+        const { id } = req.body;
+        const d = activeDownloads[id];
+        if (d) {
+            if (downloadAborts[id]) {
+                downloadAborts[id].abort();
+            }
+            
+            const partPath = d.path + '.bautilus-part';
+            try {
+                if (await fs.pathExists(d.path)) await fs.remove(d.path);
+                if (await fs.pathExists(partPath)) await fs.remove(partPath);
+            } catch (e) {}
+            
+            delete activeDownloads[id];
+            await saveDownloads();
+            res.json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Download not found' });
+        }
     });
 
     // Config endpoints
@@ -447,6 +580,26 @@ app.post('/save', async (req, res) => {
     }
 });
 
+// Multipart Upload
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const target = getSafePath(req.query.path);
+        cb(null, target);
+    },
+    filename: (req, file, cb) => {
+        cb(null, file.originalname);
+    }
+});
+const upload = multer({ storage });
+
+app.post('/upload', upload.array('files'), (req, res) => {
+    try {
+        res.json({ success: true, files: req.files });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
     // Download from URL to local path
     app.post('/download-from-url', async (req, res) => {
         const downloadId = Date.now().toString();
@@ -456,26 +609,22 @@ app.post('/save', async (req, res) => {
                 return res.status(400).json({ error: 'Missing parameters' });
             }
             
-            // Sanitize filename to prevent directory traversal or invalid chars
             const safeFilename = filename.replace(/[/\\?%*:|"<>]/g, '-');
             const saveDir = getSafePath(targetPath);
             const fullPath = path.join(saveDir, safeFilename);
-            const partPath = fullPath + '.bautilus-part';
             
             console.log(`Downloading ${url} -> ${fullPath}`);
             
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
-            }
-            
-            if (!response.body) {
-                throw new Error("No response body");
-            }
+            // First check URL to get total size if possible
+            let totalBytes = 0;
+            try {
+                const head = await fetch(url, { method: 'HEAD' });
+                totalBytes = parseInt(head.headers.get('content-length') || '0');
+            } catch (e) {}
 
-            const totalBytes = parseInt(response.headers.get('content-length') || '0');
             activeDownloads[downloadId] = {
                 id: downloadId,
+                url: url,
                 filename: safeFilename,
                 path: fullPath,
                 total: totalBytes,
@@ -483,61 +632,12 @@ app.post('/save', async (req, res) => {
                 status: 'downloading',
                 startTime: Date.now()
             };
-            await saveDownloads();
             
-            const fileStream = fs.createWriteStream(partPath);
+            performDownload(downloadId); // Start the process in background
             
             res.json({ success: true, downloadId });
-
-            // Using Readable.from(response.body) for cross-compatibility between Node versions
-            const bodyStream = response.body.getReader ? Readable.fromWeb(response.body) : response.body;
-
-            (async () => {
-                try {
-                    let lastSave = Date.now();
-                    for await (const chunk of bodyStream) {
-                        activeDownloads[downloadId].received += chunk.length;
-                        fileStream.write(chunk);
-                        
-                        // Periodic save every 2s during download
-                        if (Date.now() - lastSave > 2000) {
-                            await saveDownloads();
-                            lastSave = Date.now();
-                        }
-                    }
-                    
-                    // Ensure we show 100% even if content-length was slightly off
-                    if (activeDownloads[downloadId].total > 0) {
-                        activeDownloads[downloadId].received = activeDownloads[downloadId].total;
-                    }
-
-                    fileStream.end();
-                    
-                    // Mark as completed IMMEDIATELY so the extension sees it in the next poll
-                    activeDownloads[downloadId].status = 'completed';
-                    console.log(`Download complete: ${safeFilename}`);
-
-                    // Rename .part to final filename
-                    if (await fs.pathExists(partPath)) {
-                        await fs.move(partPath, fullPath, { overwrite: true });
-                    }
-                    
-                    await saveDownloads();
-                } catch (err) {
-                    console.error("Stream error:", err);
-                    if (activeDownloads[downloadId]) {
-                        activeDownloads[downloadId].status = 'error';
-                        activeDownloads[downloadId].error = err.message;
-                    }
-                    fileStream.end();
-                    // Cleanup partial file
-                    if (await fs.pathExists(partPath)) await fs.remove(partPath);
-                    await saveDownloads();
-                }
-            })();
-            
         } catch (error) {
-            console.error("Download error:", error);
+            console.error("Download start error:", error);
             res.status(500).json({ error: error.message });
         }
     });
