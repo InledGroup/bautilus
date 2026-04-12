@@ -5,9 +5,6 @@
 > [!CAUTION]
 > This project is in beta phase, so we do not recommend it for production currently. Follow the news of this and other Inled Group projects in [our newsletter](https://link.inled.es/newsletter-sub1).
 
-[![License: GNU](https://img.shields.io/badge/License-GNU%20GPLv3-red.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](#)
-[![Tech](https://img.shields.io/badge/tech-JavaScript%20|%20Node.js-green.svg)](#)
 
 **Bautilus** is a browser extension designed for users seeking seamless file management and a productive workspace without leaving the web. Inspired by the clean aesthetics of GNOME (Nautilus), Bautilus transforms your browser into a lightweight and powerful operating system.
 
@@ -27,6 +24,10 @@
 
 ### 🖥️ Server Component
 - Includes a **Node.js** server to facilitate persistence and interaction with the local file system securely.
+
+### 📤 File Download and Upload
+- **File Download:** Download files from the browser to the local file system.
+- **File Upload:** Upload files from the local file system to the browser.
 
 ---
 

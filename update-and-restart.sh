@@ -51,5 +51,3 @@ else
     echo "❌ Sistema operativo no soportado directamente por este script: $OS"
     exit 1
 fi
-
-fi
