@@ -701,17 +701,19 @@ function updateSelectionUI() {
     if (APP_MODE === 'picker') {
         const btnSelect = document.getElementById('btn-picker-select');
         const label = document.getElementById('picker-filename');
-        
-        if (selectedFiles.length === 1 && !selectedFiles[0].isDirectory) {
+        const IS_MULTIPLE = params.get('multiple') === '1';
+
+        const validSelection = selectedFiles.length > 0 && selectedFiles.every(f => !f.isDirectory);
+
+        if (validSelection && (IS_MULTIPLE || selectedFiles.length === 1)) {
             btnSelect.disabled = false;
-            label.textContent = selectedFiles[0].name;
+            label.textContent = selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} ${t('items_selected')}`;
         } else {
             btnSelect.disabled = true;
             label.textContent = selectedFiles.length > 0 ? t('select_valid_file') : '';
         }
         return;
     }
-
     const bar = document.getElementById('bottom-bar-wrapper');
     const label = document.getElementById('selected-file-name');
     const barBm = document.getElementById('bar-bookmark');
@@ -1199,55 +1201,109 @@ function setupGlobalEvents() {
 
         const btnPickerUpload = document.getElementById('btn-picker-upload');
         const pickerUploadInput = document.getElementById('picker-upload-input');
-        
+
+        const IS_MULTIPLE = params.get('multiple') === '1';
+        if (IS_MULTIPLE && pickerUploadInput) {
+            pickerUploadInput.multiple = true;
+        }
+
         if (btnPickerUpload) {
-            btnPickerUpload.onclick = () => pickerUploadInput.click();
+            btnPickerUpload.onclick = () => {
+                if (pickerUploadInput) {
+                    pickerUploadInput.dataset.bautilusBypass = "true";
+                    pickerUploadInput.click();
+                }
+            };
         }
 
         if (pickerUploadInput) {
             pickerUploadInput.onchange = async () => {
-                const file = pickerUploadInput.files[0];
-                if (!file) return;
+                const files = Array.from(pickerUploadInput.files);
+                if (files.length === 0) return;
 
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64 = reader.result.split(',')[1];
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-                        chrome.runtime.sendMessage({
-                            action: 'file_selected_in_picker',
-                            file: {
-                                base64: base64,
+                const processedFiles = await Promise.all(files.map(async (file) => {
+                    return new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            resolve({
+                                base64: reader.result.split(',')[1],
                                 name: file.name,
                                 type: file.type
-                            }
-                        }, () => { if (chrome.runtime.lastError) console.warn("Picker sendMessage error:", chrome.runtime.lastError.message); });
-                    }
-                };
-                reader.readAsDataURL(file);
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                }));
+
+                if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                    chrome.runtime.sendMessage({
+                        action: 'file_selected_in_picker',
+                        file: IS_MULTIPLE ? processedFiles : processedFiles[0]
+                    }, () => { if (chrome.runtime.lastError) console.warn("Picker sendMessage error:", chrome.runtime.lastError.message); });
+                }
             };
         }
 
         const btnSelect = document.getElementById('btn-picker-select');
         if (btnSelect) {
-            btnSelect.onclick = () => {
-                if (selectedFile && !selectedFile.isDirectory) {
-                    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-                        chrome.runtime.sendMessage({
-                            action: 'file_selected_in_picker',
-                            file: {
-                                url: `${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`,
-                                name: selectedFile.name,
-                                type: selectedFile.ext.replace('.', '')
+            btnSelect.onclick = async () => {
+                if (selectedFiles.length > 0) {
+                    btnSelect.disabled = true;
+                    const originalContent = btnSelect.innerHTML;
+                    btnSelect.innerHTML = `<i data-lucide="loader" class="spin"></i> <span>${t('processing') || 'Procesando...'}</span>`;
+                    if (window.lucide) lucide.createIcons();
+
+                    const filesToProcess = IS_MULTIPLE ? selectedFiles : [selectedFiles[0]];
+
+                    try {
+                        const processedFiles = await Promise.all(filesToProcess.map(async (f) => {
+                            try {
+                                const res = await fetch(`${API_URL}/view?path=${encodeURIComponent(f.path)}`);
+                                const blob = await res.blob();
+
+                                return new Promise((resolve, reject) => {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                        resolve({
+                                            base64: reader.result.split(',')[1],
+                                            name: f.name,
+                                            type: blob.type || getMimeType(f.ext)
+                                        });
+                                    };
+                                    reader.onerror = reject;
+                                    reader.readAsDataURL(blob);
+                                });
+                            } catch (e) {
+                                console.error("Error fetching file for picker:", e, f.path);
+                                return null;
                             }
-                        }, () => { if (chrome.runtime.lastError) console.warn("Picker sendMessage error:", chrome.runtime.lastError.message); });
-                    } else {
-                        // Web app mode: Download instead?
-                        window.open(`${API_URL}/view?path=${encodeURIComponent(selectedFile.path)}`, '_blank');
+                        }));
+
+                        const finalFiles = processedFiles.filter(f => f !== null);
+                        if (finalFiles.length > 0) {
+                            chrome.runtime.sendMessage({
+                                action: 'file_selected_in_picker',
+                                file: IS_MULTIPLE ? finalFiles : finalFiles[0]
+                            }, () => { 
+                                if (chrome.runtime.lastError) console.warn("Picker sendMessage error:", chrome.runtime.lastError.message); 
+                            });
+                        } else {
+                            alert("No se pudieron procesar los archivos seleccionados.");
+                        }
+                    } catch (err) {
+                        console.error("Global picker error:", err);
+                        alert("Error al procesar la selección.");
+                    } finally {
+                        btnSelect.disabled = false;
+                        btnSelect.innerHTML = originalContent;
+                        if (window.lucide) lucide.createIcons();
                     }
                 }
             };
         }
-    } else if (APP_MODE === 'save') {
+
+    }
+ else if (APP_MODE === 'save') {
         const bar = document.getElementById('save-bar');
         if (bar) bar.classList.remove('hidden');
         document.getElementById('bottom-bar-wrapper').classList.add('hidden'); 

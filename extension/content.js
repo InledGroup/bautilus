@@ -1,7 +1,37 @@
 let activeInput = null;
 
-// Listen for clicks on file inputs
-document.addEventListener('click', (event) => {
+// Inject a script to intercept programmatic .click() on file inputs
+// and ALSO to prevent any click from reaching the original element if we don't want it to.
+function injectScript() {
+    const script = document.createElement('script');
+    script.textContent = `
+        (function() {
+            // 1. Intercept programmatic .click()
+            const originalClick = HTMLInputElement.prototype.click;
+            HTMLInputElement.prototype.click = function() {
+                if (this.type === 'file' && !this.dataset.bautilusBypass) {
+                    console.log("[Bautilus] Programmatic click intercepted");
+                    const event = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    });
+                    this.dispatchEvent(event);
+                    return;
+                }
+                return originalClick.apply(this, arguments);
+            };
+
+            // 2. Intercept and kill any attempt to open the file picker via the prototype's internal methods
+            // Some browsers open it even if click is prevented if it was "user initiated"
+        })();
+    `;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+}
+injectScript();
+
+function handleInterception(event) {
     // Evitar interceptar en páginas de Bautilus (local o servidor)
     if (document.getElementById('file-view') || 
         window.location.protocol === 'chrome-extension:' ||
@@ -9,7 +39,8 @@ document.addEventListener('click', (event) => {
         return;
     }
 
-    const target = event.target;
+    const target = event.composedPath()[0]; // Support Shadow DOM
+    
     // Interceptar clicks en el input file o en labels asociados
     let fileInput = null;
     if (target.tagName === 'INPUT' && target.type === 'file') {
@@ -17,55 +48,73 @@ document.addEventListener('click', (event) => {
     } else if (target.tagName === 'LABEL' && target.htmlFor) {
         fileInput = document.getElementById(target.htmlFor);
     } else {
-        // Buscar si el click fue dentro de un label que contiene un input file
         fileInput = target.closest('label')?.querySelector('input[type="file"]');
     }
 
     if (fileInput && fileInput.type === 'file') {
-        // Evitar el selector nativo
+        // MUY IMPORTANTE: Prevenir el comportamiento por defecto INMEDIATAMENTE
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
         
+        // Si ya estamos abriendo uno, no abrir otro
+        if (activeInput === fileInput && document.getElementById('bautilus-overlay')) return;
+
         activeInput = fileInput;
-        console.log("[Bautilus] Interceptado selector de archivos para:", activeInput);
+        console.log("[Bautilus] Interceptada acción de archivos para:", activeInput);
         
-        chrome.runtime.sendMessage({ action: 'open_picker' }, () => {
+        chrome.runtime.sendMessage({ 
+            action: 'open_picker',
+            multiple: activeInput.multiple,
+            accept: activeInput.accept
+        }, () => {
             if (chrome.runtime.lastError) console.warn("[Bautilus] Background not ready:", chrome.runtime.lastError.message);
         });
+        
+        return false;
     }
-}, true); // Fase de captura para llegar antes que los scripts de la web
+}
+
+// Usamos una combinación de eventos para asegurar la captura antes de que el navegador abra el diálogo
+// 'click' es el estándar, pero 'pointerdown' ocurre antes y nos permite preparar la cancelación.
+document.addEventListener('click', handleInterception, { capture: true, passive: false });
+document.addEventListener('mousedown', handleInterception, { capture: true, passive: false });
+
+// Interceptar Drag & Drop
+document.addEventListener('dragover', (event) => {
+    if (event.dataTransfer.types.includes('Files')) {
+        // event.preventDefault(); // Opcional: interceptar drops globales
+    }
+}, true);
+
+document.addEventListener('drop', (event) => {
+    const files = event.dataTransfer.files;
+    if (files && files.length > 0) {
+        // Futura mejora: permitir soltar archivos directamente en la página para subirlos vía Bautilus
+    }
+}, true);
 
 // Listen for the file selection from the popup via background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("[Bautilus Content] Mensaje recibido:", message.action);
     if (message.action === 'show_bautilus_modal') {
-        console.log("[Bautilus Content] Mostrando modal:", message.url);
         showBautilusModal(message.url);
         sendResponse({success: true});
     } else if (message.action === 'close_bautilus_modal') {
-        console.log("[Bautilus Content] Cerrando modal");
         hideBautilusModal();
         sendResponse({success: true});
     } else if (message.action === 'file_selected' && activeInput) {
-        console.log("Bautilus: File received from background", message.file.name);
         handleFileSelection(activeInput, message.file);
-        activeInput = null; // Reset
+        activeInput = null;
         sendResponse({success: true});
     }
-    return true; // Keep channel open for async if needed
+    return true;
 });
 
 function showBautilusModal(url) {
-    if (document.getElementById('bautilus-overlay')) {
-        console.warn("[Bautilus Content] El modal ya existe.");
-        return;
-    }
+    if (document.getElementById('bautilus-overlay')) return;
 
-    console.log("[Bautilus Content] Creando elementos del modal...");
     const overlay = document.createElement('div');
     overlay.id = 'bautilus-overlay';
-    overlay.className = 'bautilus-overlay-root';
     overlay.style.cssText = `
         position: fixed !important;
         inset: 0 !important;
@@ -109,13 +158,9 @@ function showBautilusModal(url) {
     overlay.appendChild(container);
     (document.body || document.documentElement).appendChild(overlay);
 
-    console.log("[Bautilus Content] Modal inyectado en el DOM.");
-
-    // Animate in
     setTimeout(() => {
         overlay.style.opacity = '1';
         container.style.transform = 'scale(1)';
-        console.log("[Bautilus Content] Animación de entrada iniciada.");
     }, 10);
 }
 
@@ -125,54 +170,42 @@ function hideBautilusModal() {
 
     overlay.style.opacity = '0';
     overlay.querySelector('div').style.transform = 'scale(0.95)';
-
-    setTimeout(() => {
-        overlay.remove();
-    }, 300);
+    setTimeout(() => overlay.remove(), 300);
 }
 
-function handleFileSelection(inputElement, fileData) {
+function handleFileSelection(inputElement, fileDataOrArray) {
     try {
-        // Decode Base64 to Blob
-        const byteCharacters = atob(fileData.base64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: fileData.type || 'application/octet-stream' });
-        
-        // Create a File object
-        const file = new File([blob], fileData.name, {
-            type: blob.type,
-            lastModified: new Date().getTime()
-        });
-
-        // Use DataTransfer to simulate file selection
+        const fileDataArray = Array.isArray(fileDataOrArray) ? fileDataOrArray : [fileDataOrArray];
         const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(file);
+
+        fileDataArray.forEach(fileData => {
+            const byteCharacters = atob(fileData.base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: fileData.type || 'application/octet-stream' });
+            const file = new File([blob], fileData.name, {
+                type: blob.type,
+                lastModified: new Date().getTime()
+            });
+            dataTransfer.items.add(file);
+        });
         
-        // IMPORTANT: Some frameworks check for the 'files' property being updated.
-        // We set it directly.
         inputElement.files = dataTransfer.files;
 
-        // Dispatch multiple events to ensure the website reacts.
-        // Some use 'change', some 'input', some even 'click' or 'blur'.
-        const events = ['input', 'change'];
-        events.forEach(eventName => {
+        ['input', 'change'].forEach(eventName => {
             const event = new Event(eventName, { bubbles: true, cancelable: true });
-            // For React and other frameworks that might override the value setter
             inputElement.dispatchEvent(event);
         });
         
-        // Trigger a 'change' event specifically for file inputs
         const changeEvent = new Event('change', { bubbles: true });
         Object.defineProperty(changeEvent, 'target', {writable: false, value: inputElement});
         inputElement.dispatchEvent(changeEvent);
-
-        console.log("Bautilus: Successfully populated input with", file.name);
         
+        console.log("Bautilus: Inyectados", fileDataArray.length, "archivos");
     } catch (error) {
-        console.error('Bautilus: Error injecting file into input:', error);
+        console.error('Bautilus: Error inyectando archivos:', error);
     }
 }

@@ -29,7 +29,7 @@ if [ "$OS" == "Darwin" ]; then
     else
         echo "⚠️  Aviso: El servicio launchctl no existe en $PLIST_PATH"
         echo "💡 Intentando iniciar el servidor manualmente para probar..."
-        cd "$SERVER_DIR" && node index.js &
+        cd "$SERVER_DIR" && node src/index.js &
         echo "✅ Servidor iniciado manualmente en segundo plano."
     fi
 
@@ -50,4 +50,6 @@ elif [ "$OS" == "Linux" ]; then
 else
     echo "❌ Sistema operativo no soportado directamente por este script: $OS"
     exit 1
+fi
+
 fi

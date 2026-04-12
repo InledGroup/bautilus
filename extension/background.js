@@ -190,12 +190,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // 1. Upload Request from Content Script (Website wants a file)
     if (msg.action === 'open_picker') {
         lastPickerRequestTabId = sender.tab.id;
-        const pickerUrl = chrome.runtime.getURL('index.html?mode=picker&display=modal');
+        const multiple = msg.multiple ? '1' : '0';
+        const accept = msg.accept ? encodeURIComponent(msg.accept) : '';
+        const pickerUrl = chrome.runtime.getURL(`index.html?mode=picker&display=modal&multiple=${multiple}&accept=${accept}`);
         sendToTabOrOpenWindow(sender.tab.id, { 
             action: 'show_bautilus_modal', 
             url: pickerUrl 
         }, {
-            url: chrome.runtime.getURL('index.html?mode=picker'),
+            url: chrome.runtime.getURL(`index.html?mode=picker&multiple=${multiple}&accept=${accept}`),
             type: 'popup',
             width: 900,
             height: 600
@@ -207,13 +209,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const targetTabId = lastPickerRequestTabId;
         if (!targetTabId) return sendResponse({error: "No requesting tab found"});
 
-        const { url, name, type, base64: providedBase64 } = msg.file;
+        const files = Array.isArray(msg.file) ? msg.file : [msg.file];
         
-        const processFile = (base64) => {
-            chrome.tabs.sendMessage(targetTabId, {
-                action: 'file_selected',
-                file: { base64: base64, name: name, type: type }
-            }).catch(() => {});
+        const processFiles = async () => {
+            const finalFiles = await Promise.all(files.map(async (f) => {
+                if (f.base64) return f;
+                
+                try {
+                    const res = await fetch(f.url);
+                    const buffer = await res.arrayBuffer();
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    const len = bytes.byteLength;
+                    for (let i = 0; i < len; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return { base64: btoa(binary), name: f.name, type: f.type };
+                } catch (err) {
+                    console.error("Error fetching file for picker:", err);
+                    return null;
+                }
+            }));
+
+            const validFiles = finalFiles.filter(f => f !== null);
+            if (validFiles.length > 0) {
+                chrome.tabs.sendMessage(targetTabId, {
+                    action: 'file_selected',
+                    file: Array.isArray(msg.file) ? validFiles : validFiles[0]
+                }).catch(() => {});
+            }
             
             // Cerrar el modal o popup
             chrome.tabs.sendMessage(targetTabId, { action: 'close_bautilus_modal' }).catch(() => {});
@@ -222,23 +246,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             }
         };
 
-        if (providedBase64) {
-            processFile(providedBase64);
-        } else {
-            fetch(url)
-                .then(res => res.arrayBuffer())
-                .then(buffer => {
-                    const bytes = new Uint8Array(buffer);
-                    let binary = '';
-                    const len = bytes.byteLength;
-                    for (let i = 0; i < len; i++) {
-                        binary += String.fromCharCode(bytes[i]);
-                    }
-                    const base64 = btoa(binary);
-                    processFile(base64);
-                })
-                .catch(err => console.error("Error fetching file for picker:", err));
-        }
+        processFiles();
         sendResponse({});
     }
     // 3. Save Target Selected in Bautilus UI (for Download)

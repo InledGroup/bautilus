@@ -28,7 +28,7 @@ cat <<EOF > "$PLIST_PATH"
     <key>ProgramArguments</key>
     <array>
         <string>$NODE_PATH</string>
-        <string>$SERVER_DIR/index.js</string>
+        <string>$SERVER_DIR/src/index.js</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

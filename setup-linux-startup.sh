@@ -23,7 +23,7 @@ mkdir -p "$AUTOSTART_DIR"
 cat <<EOF > "$AUTOSTART_DIR/$APP_NAME.desktop"
 [Desktop Entry]
 Type=Application
-Exec=$NODE_PATH $SERVER_DIR/index.js
+Exec=$NODE_PATH $SERVER_DIR/src/index.js
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true

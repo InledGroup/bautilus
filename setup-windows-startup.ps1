@@ -19,7 +19,7 @@ Write-Host "Node path: $NodePath"
 $VbsPath = Join-Path $ServerDir "launcher.vbs"
 $VbsContent = @"
 Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run "$NodePath $ServerDir\index.js", 0
+WshShell.Run "$NodePath $ServerDir\src\index.js", 0
 Set WshShell = Nothing
 "@
 

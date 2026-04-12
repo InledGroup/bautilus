@@ -28,7 +28,7 @@ elif [ "$OS" == "Linux" ]; then
     
     # Find the PID of the server/index.js process
     # We use pgrep with -f to match the full command line
-    PID=$(pgrep -f "$SERVER_DIR/index.js")
+    PID=$(pgrep -f "$SERVER_DIR/src/index.js")
     
     if [ -n "$PID" ]; then
         echo "Stopping existing process ($PID)..."
@@ -38,7 +38,7 @@ elif [ "$OS" == "Linux" ]; then
     
     echo "Starting server..."
     # Start in background and redirect output to a log file
-    nohup "$NODE_PATH" "$SERVER_DIR/index.js" > /tmp/bautilus-server.log 2>&1 &
+    nohup "$NODE_PATH" "$SERVER_DIR/src/index.js" > /tmp/bautilus-server.log 2>&1 &
     
     echo "Done. Server is running in background. Logs: /tmp/bautilus-server.log"
 
