@@ -101,6 +101,9 @@ const translations = {
         desktop: "Escritorio",
         documents: "Documentos",
         downloads: "Descargas",
+        music: "Música",
+        pictures: "Imágenes",
+        videos: "Vídeos",
         img_viewer: "Visor de Imágenes",
         video_player: "Reproductor de Vídeo",
         music_player: "Reproductor de Música",
@@ -198,6 +201,9 @@ const translations = {
         desktop: "Desktop",
         documents: "Documents",
         downloads: "Downloads",
+        music: "Music",
+        pictures: "Pictures",
+        videos: "Videos",
         img_viewer: "Image Viewer",
         video_player: "Video Player",
         music_player: "Music Player",
@@ -1897,9 +1903,9 @@ async function loadSystemPaths() {
         add(t('desktop'), 'user-desktop.svg', p.desktop);
         add(t('documents'), 'folder-documents.svg', p.documents);
         add(t('downloads'), 'folder-download.svg', p.downloads);
-        if (p.music) add(t('music_player'), 'folder-music.svg', p.music);
-        if (p.pictures) add(t('image'), 'folder-pictures.svg', p.pictures);
-        if (p.videos) add(t('video'), 'folder-videos.svg', p.videos);
+        if (p.music) add(t('music'), 'folder-music.svg', p.music);
+        if (p.pictures) add(t('pictures'), 'folder-pictures.svg', p.pictures);
+        if (p.videos) add(t('videos'), 'folder-videos.svg', p.videos);
 
         // Windows Drives Section
         if (p.drives && p.drives.length > 0) {

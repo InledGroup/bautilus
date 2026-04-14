@@ -4,8 +4,6 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs-extra');
 const multer = require('multer');
-const archiver = require('archiver');
-const AdmZip = require('adm-zip');
 
 // Ensure fetch is available (Node 18+) or polyfill
 if (typeof fetch === 'undefined') {
@@ -21,7 +19,14 @@ const Download = require('./domain/Download');
 
 // Use Cases
 const ListFilesUseCase = require('./application/ListFilesUseCase');
-// (Add more use cases here)
+const RenameFileUseCase = require('./application/RenameFileUseCase');
+const DeleteFileUseCase = require('./application/DeleteFileUseCase');
+const CopyFileUseCase = require('./application/CopyFileUseCase');
+const CreateFolderUseCase = require('./application/CreateFolderUseCase');
+const OpenSystemFileUseCase = require('./application/OpenSystemFileUseCase');
+const UnzipFileUseCase = require('./application/UnzipFileUseCase');
+const SaveFileContentUseCase = require('./application/SaveFileContentUseCase');
+const ClearDownloadsUseCase = require('./application/ClearDownloadsUseCase');
 
 // Controllers
 const ExpressFileController = require('./infrastructure/controllers/ExpressFileController');
@@ -35,8 +40,19 @@ async function startServer() {
     const fileRepo = new NodeFileRepository(ROOT);
     const downloadRepo = new FileDownloadRepository();
 
-    const listFilesUseCase = new ListFilesUseCase(fileRepo);
-    const fileController = new ExpressFileController(listFilesUseCase);
+    const useCases = {
+        listFilesUseCase: new ListFilesUseCase(fileRepo),
+        renameFileUseCase: new RenameFileUseCase(fileRepo),
+        deleteFileUseCase: new DeleteFileUseCase(fileRepo),
+        copyFileUseCase: new CopyFileUseCase(fileRepo),
+        createFolderUseCase: new CreateFolderUseCase(fileRepo),
+        openSystemFileUseCase: new OpenSystemFileUseCase(),
+        unzipFileUseCase: new UnzipFileUseCase(fileRepo),
+        saveFileContentUseCase: new SaveFileContentUseCase(fileRepo),
+        clearDownloadsUseCase: new ClearDownloadsUseCase(downloadRepo)
+    };
+
+    const fileController = new ExpressFileController(useCases);
 
     app.use(cors());
     app.use(express.json());
@@ -44,7 +60,14 @@ async function startServer() {
 
     // --- File Routes ---
     app.get('/files', (req, res) => fileController.list(req, res));
-    
+    app.post('/rename', (req, res) => fileController.rename(req, res));
+    app.post('/delete', (req, res) => fileController.delete(req, res));
+    app.post('/copy', (req, res) => fileController.copy(req, res));
+    app.post('/create-folder', (req, res) => fileController.createFolder(req, res));
+    app.post('/open-system', (req, res) => fileController.openSystem(req, res));
+    app.post('/unzip', (req, res) => fileController.unzip(req, res));
+    app.post('/save', (req, res) => fileController.save(req, res));
+
     app.get('/view', (req, res) => {
         const filePath = fileRepo.getSafePath(req.query.path);
         res.sendFile(filePath);
@@ -81,12 +104,14 @@ async function startServer() {
     // System Paths
     app.get('/system-paths', async (req, res) => {
         const drives = await fileRepo.getWindowsDrives();
-        // Simplified for brevity, normally you'd use a service
         res.json({
             home: ROOT,
             desktop: path.join(ROOT, 'Desktop'),
             documents: path.join(ROOT, 'Documents'),
             downloads: path.join(ROOT, 'Downloads'),
+            music: path.join(ROOT, 'Music'),
+            pictures: path.join(ROOT, 'Pictures'),
+            videos: path.join(ROOT, 'Videos'),
             drives: drives
         });
     });
@@ -97,6 +122,8 @@ async function startServer() {
     app.get('/downloads', async (req, res) => {
         res.json(await downloadRepo.getAll());
     });
+
+    app.post('/clear-downloads', (req, res) => fileController.clearDownloads(req, res));
 
     app.post('/download-from-url', async (req, res) => {
         const { url, targetPath, filename } = req.body;
@@ -161,6 +188,10 @@ async function startServer() {
             res.status(404).json({ error: 'Download not found' });
         }
     });
+
+    // Config Routes
+    app.get('/get-config', (req, res) => fileController.getConfig(req, res));
+    app.post('/set-config', (req, res) => fileController.setConfig(req, res));
 
     // --- Helper for Downloads (Streaming) ---
     async function performDownload(d, repo) {
