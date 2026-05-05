@@ -147,7 +147,11 @@ const translations = {
         connection_error: "Error de conexión con el servidor",
         upload: "Subir archivos",
         upload_success: "Archivos subidos con éxito.",
-        upload_error: "Error al subir archivos."
+        upload_error: "Error al subir archivos.",
+        config_paths: "Configurar Rutas",
+        linux_path_warning: "Hemos detectado que estás en Linux. Por favor, verifica que los nombres de las carpetas coinciden con los de tu sistema.",
+        folder_type: "Tipo de Carpeta",
+        folder_name: "Nombre en el Sistema"
     },
     en: {
         places: "Places",
@@ -245,7 +249,11 @@ const translations = {
                 connection_error: "Connection error with server",
                 upload: "Upload files",
                 upload_success: "Files uploaded successfully.",
-                upload_error: "Error uploading files."
+                upload_error: "Error uploading files.",
+                config_paths: "Configure Paths",
+                linux_path_warning: "We have detected you are on Linux. Please verify that folder names match your system.",
+                folder_type: "Folder Type",
+                folder_name: "System Name"
         ,
         settings: "Settings",
         server_interface: "Interface (IP)",
@@ -1394,29 +1402,81 @@ function showModal(title, val, action) {
 async function openSettingsModal() {
     const overlay = document.getElementById('settings-overlay');
     const srvSection = document.getElementById('server-settings-section');
+    const pathSection = document.getElementById('system-paths-section');
     const errorBox = document.getElementById('server-connection-error');
-    
+    const pathsBody = document.getElementById('settings-paths-body');
+    const warning = document.getElementById('settings-warning');
+
     document.getElementById('ext-api-url').value = API_URL;
     overlay.classList.remove('hidden');
-    
+    pathsBody.innerHTML = '';
+
     try {
-        const res = await fetch(`${API_URL}/get-config`);
+        const res = await fetch(`${API_URL}/system-paths`);
         if (res.ok) {
-            const config = await res.json();
-            document.getElementById('settings-interface').value = config.interface;
-            document.getElementById('settings-port').value = config.port;
+            const data = await res.json();
+
+            // Show server config if we can connect
             srvSection.classList.remove('hidden');
+            pathSection.classList.remove('hidden');
             errorBox.classList.add('hidden');
+
+            // Fetch server config for interface/port
+            const configRes = await fetch(`${API_URL}/get-config`);
+            if (configRes.ok) {
+                const config = await configRes.json();
+                document.getElementById('settings-interface').value = config.interface;
+                document.getElementById('settings-port').value = config.port;
+            }
+
+            // Linux Warning
+            if (data.platform === 'linux') {
+                warning.classList.remove('hidden');
+            } else {
+                warning.classList.add('hidden');
+            }
+
+            // Populate table
+            const folders = ['desktop', 'documents', 'downloads', 'music', 'pictures', 'videos'];
+            folders.forEach(f => {
+                const row = document.createElement('tr');
+                const name = data[f].split(/[/\\]/).pop();
+                row.innerHTML = `
+                    <td>${t(f)}</td>
+                    <td><input type="text" data-folder="${f}" value="${name}"></td>
+                `;
+                pathsBody.appendChild(row);
+            });
+
+            document.getElementById('btn-save-system-paths').onclick = async () => {
+                const newPaths = {};
+                pathsBody.querySelectorAll('input').forEach(input => {
+                    newPaths[input.dataset.folder] = input.value;
+                });
+
+                try {
+                    const saveRes = await fetch(`${API_URL}/system-paths/configure`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newPaths)
+                    });
+                    if (saveRes.ok) {
+                        alert(t('saved_success'));
+                        loadSystemPaths();
+                    }
+                } catch (e) { alert(t('upload_error')); }
+            };
+
         } else {
             throw new Error();
         }
-    } catch (e) { 
-        console.error('Error fetching settings:', e); 
+    } catch (e) {
+        console.error('Error fetching settings:', e);
         srvSection.classList.add('hidden');
+        pathSection.classList.add('hidden');
         errorBox.classList.remove('hidden');
     }
 }
-
 async function updateDownloads() {
     try {
         const res = await fetch(`${API_URL}/downloads`);

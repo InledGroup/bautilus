@@ -175,7 +175,75 @@ button { border: none !important; background: transparent !important; cursor: po
 .popup-header { height: 56px; border-bottom: 1px solid var(--border) !important; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0; background: var(--headerbar-bg); }
 
 /* DIALOGS */
-.modal-dialog { width: 400px; height: auto; padding: 24px; }
+.modal-dialog {
+    width: 500px;
+    height: auto;
+    padding: 24px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border) !important;
+    margin-bottom: 20px;
+}
+
+.modal-body {
+    padding-bottom: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 20px;
+    border-top: 1px solid var(--border) !important;
+}
+
+.settings-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.settings-table th, .settings-table td {
+    text-align: left;
+    padding: 12px;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+.settings-table input {
+    width: 100%;
+    background: var(--hover) !important;
+    color: var(--text-main);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.settings-warning {
+    background-color: rgba(246, 193, 2, 0.1);
+    border: 1px solid #f6c102 !important;
+    color: #c69c02;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 15px;
+}
+
+.btn-accent {
+    background-color: var(--accent) !important;
+    color: white !important;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.btn-accent:hover {
+    filter: brightness(1.1);
+}
 .modal-input-box { background: var(--sidebar-bg); border: 1px solid var(--border) !important; border-radius: 10px; padding: 10px 14px; margin: 20px 0; }
 .modal-input-box input { background: transparent !important; width: 100%; font-size: 15px; color: inherit; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; }

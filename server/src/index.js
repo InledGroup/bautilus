@@ -13,6 +13,7 @@ if (typeof fetch === 'undefined') {
 // Repositories
 const NodeFileRepository = require('./infrastructure/repositories/NodeFileRepository');
 const FileDownloadRepository = require('./infrastructure/repositories/FileDownloadRepository');
+const SettingsRepository = require('./infrastructure/repositories/SettingsRepository');
 
 // Domain
 const Download = require('./domain/Download');
@@ -39,6 +40,7 @@ async function startServer() {
 
     const fileRepo = new NodeFileRepository(ROOT);
     const downloadRepo = new FileDownloadRepository();
+    const settingsRepo = new SettingsRepository();
 
     const useCases = {
         listFilesUseCase: new ListFilesUseCase(fileRepo),
@@ -104,16 +106,29 @@ async function startServer() {
     // System Paths
     app.get('/system-paths', async (req, res) => {
         const drives = await fileRepo.getWindowsDrives();
+        const customPaths = await settingsRepo.getSystemPaths();
+        
         res.json({
+            platform: os.platform(),
             home: ROOT,
-            desktop: path.join(ROOT, 'Desktop'),
-            documents: path.join(ROOT, 'Documents'),
-            downloads: path.join(ROOT, 'Downloads'),
-            music: path.join(ROOT, 'Music'),
-            pictures: path.join(ROOT, 'Pictures'),
-            videos: path.join(ROOT, 'Videos'),
-            drives: drives
+            desktop: path.resolve(ROOT, customPaths.desktop || 'Desktop'),
+            documents: path.resolve(ROOT, customPaths.documents || 'Documents'),
+            downloads: path.resolve(ROOT, customPaths.downloads || 'Downloads'),
+            music: path.resolve(ROOT, customPaths.music || 'Music'),
+            pictures: path.resolve(ROOT, customPaths.pictures || 'Pictures'),
+            videos: path.resolve(ROOT, customPaths.videos || 'Videos'),
+            drives: drives,
+            isConfigured: Object.keys(customPaths).length > 0
         });
+    });
+
+    app.post('/system-paths/configure', async (req, res) => {
+        try {
+            await settingsRepo.saveSystemPaths(req.body);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
     });
 
     // --- Download Routes ---

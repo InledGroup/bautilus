@@ -377,6 +377,28 @@
                     </div>
                 </div>
 
+                <!-- SYSTEM PATHS SETTINGS -->
+                <div id="system-paths-section" style="margin-top: 25px; border-top: 1px solid var(--border); padding-top: 15px;">
+                    <h4 style="margin-bottom:10px; color:#3584e4;" data-i18n="config_paths">Configurar Rutas</h4>
+                    <p id="settings-warning" class="settings-warning hidden" data-i18n="linux_path_warning" style="margin-bottom:10px;">
+                        Hemos detectado que estás en Linux. Por favor, verifica que los nombres de las carpetas coinciden con los de tu sistema.
+                    </p>
+                    <table class="settings-table">
+                        <thead>
+                            <tr>
+                                <th style="font-size:12px; color:var(--text-muted);" data-i18n="folder_type">Tipo de Carpeta</th>
+                                <th style="font-size:12px; color:var(--text-muted);" data-i18n="folder_name">Nombre en el Sistema</th>
+                            </tr>
+                        </thead>
+                        <tbody id="settings-paths-body">
+                            <!-- Dynamic rows will be injected here -->
+                        </tbody>
+                    </table>
+                    <div style="margin-top:20px; text-align:right;">
+                        <button id="btn-save-system-paths" class="btn-flat primary" data-i18n="save">Guardar Rutas</button>
+                    </div>
+                </div>
+
                 <div id="server-connection-error" class="hidden" style="padding: 15px; background: rgba(255,0,0,0.1); border-radius: 8px; color: #ff7b7b; font-size: 12px; margin-top: 10px;">
                     <i data-lucide="alert-circle" size="14" style="vertical-align: middle; margin-right: 5px;"></i>
                     No se pudo conectar con el servidor. Verifica la URL de arriba.
