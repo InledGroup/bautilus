@@ -4,6 +4,8 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs-extra');
 const multer = require('multer');
+const { pipeline } = require('stream/promises');
+const { Readable, Transform } = require('stream');
 
 // Ensure fetch is available (Node 18+) or polyfill
 if (typeof fetch === 'undefined') {
@@ -253,29 +255,29 @@ async function startServer() {
                 }
             }
 
-            writer = fs.createWriteStream(d.path + '.part', { flags: isPartial ? 'a' : 'w' });
-
-            const reader = response.body.getReader ? response.body.getReader() : response.body;
-
-            if (reader.on) { // Node stream
-                for await (const chunk of reader) {
-                    d.received += chunk.length;
-                    writer.write(chunk);
-                }
-            } else { // Web stream
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    d.received += value.length;
-                    writer.write(value);
-                }
-            }
-
-            await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-                writer.end();
+            writer = fs.createWriteStream(d.path + '.part', { 
+                flags: isPartial ? 'a' : 'w',
+                highWaterMark: 128 * 1024 // 128KB buffer for faster writing
             });
+
+            const progressTracker = new Transform({
+                transform(chunk, encoding, callback) {
+                    d.received += chunk.length;
+                    callback(null, chunk);
+                }
+            });
+
+            // Handle both Node.js streams and Web Streams (Node 18+)
+            const bodyStream = response.body.getReader 
+                ? Readable.fromWeb(response.body) 
+                : response.body;
+
+            await pipeline(
+                bodyStream,
+                progressTracker,
+                writer,
+                { signal: controller.signal }
+            );
             
             if (d.status === 'downloading') {
                 await fs.move(d.path + '.part', d.path, { overwrite: true });

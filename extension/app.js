@@ -1506,7 +1506,7 @@ async function updateDownloads() {
                     item.className = 'download-item';
                     
                     const percent = d.total > 0 ? Math.min(100, Math.round((d.received / d.total) * 100)) : 0;
-                    const statusClass = d.status === 'completed' ? 'completed' : (d.status === 'error' ? 'error' : (d.status === 'paused' ? 'paused' : ''));
+                    const statusClass = d.status === 'completed' ? 'completed' : (d.status === 'error' ? 'error' : (d.status === 'paused' ? 'paused' : (d.status === 'downloading' ? 'downloading' : '')));
                     let statusText = d.status === 'completed' ? 'Completado' : (d.status === 'error' ? 'Error' : (d.status === 'paused' ? 'Pausado' : `${percent}%`));
                     
                     if (d.status === 'downloading' && d.total === 0) statusText = 'Descargando...';
