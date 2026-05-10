@@ -36,6 +36,18 @@ class SettingsRepository {
         await this._persist();
     }
 
+    async getPartitionLabels() {
+        await this._ensureInitialized();
+        return this.settings.partitionLabels || {};
+    }
+
+    async savePartitionLabel(name, label) {
+        await this._ensureInitialized();
+        if (!this.settings.partitionLabels) this.settings.partitionLabels = {};
+        this.settings.partitionLabels[name] = label;
+        await this._persist();
+    }
+
     async _persist() {
         try {
             await fs.ensureDir(this.configDir);

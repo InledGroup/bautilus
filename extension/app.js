@@ -151,7 +151,8 @@ const translations = {
         config_paths: "Configurar Rutas",
         linux_path_warning: "Hemos detectado que estás en Linux. Por favor, verifica que los nombres de las carpetas coinciden con los de tu sistema.",
         folder_type: "Tipo de Carpeta",
-        folder_name: "Nombre en el Sistema"
+        folder_name: "Nombre en el Sistema",
+        partitions: "Particiones"
     },
     en: {
         places: "Places",
@@ -235,30 +236,26 @@ const translations = {
         update_available: "New update available!",
         later: "Later",
         update_now: "Update now",
-                no_update_found: "You already have the latest version.",
-                up_to_date: "Bautilus is up to date.",
-                settings: "Settings",
-                server_interface: "Interface (IP)",
-                server_port: "Port",
-                restart_warning: "Changes will be saved. The server may need to restart.",
-                ext_connection: "Extension Connection",
-                backend_url: "Backend URL",
-                server_config: "Server Configuration",
-                apply: "Apply",
-                save_server: "Save to Server",
-                connection_error: "Connection error with server",
-                upload: "Upload files",
-                upload_success: "Files uploaded successfully.",
-                upload_error: "Error uploading files.",
-                config_paths: "Configure Paths",
-                linux_path_warning: "We have detected you are on Linux. Please verify that folder names match your system.",
-                folder_type: "Folder Type",
-                folder_name: "System Name"
-        ,
+        no_update_found: "You already have the latest version.",
+        up_to_date: "Bautilus is up to date.",
         settings: "Settings",
         server_interface: "Interface (IP)",
         server_port: "Port",
-        restart_warning: "Changes will be saved. The server may need to restart."
+        restart_warning: "Changes will be saved. The server may need to restart.",
+        ext_connection: "Extension Connection",
+        backend_url: "Backend URL",
+        server_config: "Server Configuration",
+        apply: "Apply",
+        save_server: "Save to Server",
+        connection_error: "Connection error with server",
+        upload: "Upload files",
+        upload_success: "Files uploaded successfully.",
+        upload_error: "Error uploading files.",
+        config_paths: "Configure Paths",
+        linux_path_warning: "We have detected you are on Linux. Please verify that folder names match your system.",
+        folder_type: "Folder Type",
+        folder_name: "System Name",
+        partitions: "Partitions"
     }
 };
 
@@ -1982,6 +1979,51 @@ async function loadSystemPaths() {
                 side.appendChild(li);
             });
         }
+
+        // Linux Partitions Section
+        const partitionSide = document.getElementById('partition-bookmarks');
+        const partitionSection = document.getElementById('partitions-section');
+        if (p.partitions && p.partitions.length > 0) {
+            partitionSection.classList.remove('hidden');
+            partitionSide.innerHTML = '';
+            p.partitions.forEach(part => {
+                const li = document.createElement('li');
+                li.className = 'partition-item';
+                li.dataset.path = part.mountpoint;
+                
+                const icon = part.isRemovable ? 'folder-download.svg' : 'user-home.svg';
+                const hue = part.isRemovable ? 'hue-rotate(100deg)' : 'hue-rotate(200deg)';
+                
+                li.innerHTML = `
+                    <div class="partition-info">
+                        <img src="icons/adwaita/${icon}" style="filter: ${hue}">
+                        <span style="flex:1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${part.displayName}</span>
+                        <div class="rename-partition" data-name="${part.name}" data-current="${part.displayName}"><i data-lucide="pencil" size="12"></i></div>
+                    </div>
+                    <div class="partition-bar-container">
+                        <div class="partition-bar" style="width: ${part.fsuse}"></div>
+                    </div>
+                    <div class="partition-stats">
+                        <span>${part.fsuse} usado</span>
+                        <span>${part.fsavail} libre de ${part.fssize || part.size}</span>
+                    </div>
+                `;
+                li.onclick = () => navigateTo(part.mountpoint);
+                
+                li.querySelector('.rename-partition').onclick = (e) => {
+                    e.stopPropagation();
+                    const name = e.currentTarget.dataset.name;
+                    const current = e.currentTarget.dataset.current;
+                    showPartitionRenameModal(name, current);
+                };
+                
+                partitionSide.appendChild(li);
+            });
+        } else {
+            partitionSection.classList.add('hidden');
+        }
+
+        if (window.lucide) lucide.createIcons();
         return p;
     } catch(e) { 
         console.error("Error loading system paths:", e); 
@@ -2010,10 +2052,47 @@ async function loadCustomBookmarks() {
     });
 }
 
+function showPartitionRenameModal(name, currentLabel) {
+    const modal = document.getElementById('modal-overlay');
+    const title = document.getElementById('modal-title');
+    const input = document.getElementById('modal-input');
+    const confirm = document.getElementById('btn-modal-confirm');
+    const cancel = document.getElementById('btn-modal-cancel');
+
+    title.textContent = t('rename');
+    input.value = currentLabel;
+    modal.classList.remove('hidden');
+    input.focus();
+    input.select();
+
+    const cleanup = () => {
+        modal.classList.add('hidden');
+        confirm.onclick = null;
+        cancel.onclick = null;
+    };
+
+    confirm.onclick = async () => {
+        const newLabel = input.value.trim();
+        try {
+            await fetch(`${API_URL}/partitions/set-label`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, label: newLabel })
+            });
+            loadSystemPaths();
+        } catch (e) {
+            console.error("Error renaming partition:", e);
+        }
+        cleanup();
+    };
+
+    cancel.onclick = cleanup;
+}
+
 function updateActiveBookmark() {
     const norm = (p) => (p || '').replace(/[\\\/]$/, '').toLowerCase();
     const current = norm(currentPath);
-    document.querySelectorAll('.sidebar li').forEach(li => {
+    document.querySelectorAll('.sidebar li, .partition-item').forEach(li => {
         const liPath = li.dataset.path;
         if (liPath && norm(liPath) === current) {
             li.classList.add('active');

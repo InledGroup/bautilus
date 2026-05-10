@@ -28,6 +28,40 @@ class NodeFileRepository extends FileRepository {
         }
     }
 
+    async getPartitions() {
+        if (os.platform() !== 'linux') return [];
+        try {
+            const { stdout } = await execPromise('lsblk -J -o NAME,RM,TYPE,MOUNTPOINT,SIZE,FSSIZE,FSUSED,FSAVAIL,FSUSE%,LABEL');
+            const data = JSON.parse(stdout);
+            const partitions = [];
+            
+            const processDevice = (dev) => {
+                if (dev.type === 'part' && dev.mountpoint && !dev.mountpoint.startsWith('[') ) {
+                    partitions.push({
+                        name: dev.name,
+                        label: dev.label || dev.name,
+                        mountpoint: dev.mountpoint,
+                        size: dev.size,
+                        fssize: dev.fssize,
+                        fsused: dev.fsused,
+                        fsavail: dev.fsavail,
+                        fsuse: dev['fsuse%'] || '0%',
+                        isRemovable: dev.rm
+                    });
+                }
+                if (dev.children) {
+                    dev.children.forEach(processDevice);
+                }
+            };
+            
+            data.blockdevices.forEach(processDevice);
+            return partitions;
+        } catch (e) {
+            console.error("Error getting partitions:", e);
+            return [];
+        }
+    }
+
     async list(targetPath) {
         if (os.platform() === 'win32' && (!targetPath || targetPath === 'root')) {
             const drives = await this.getWindowsDrives();

@@ -108,7 +108,16 @@ async function startServer() {
     // System Paths
     app.get('/system-paths', async (req, res) => {
         const drives = await fileRepo.getWindowsDrives();
+        const partitions = await fileRepo.getPartitions();
         const customPaths = await settingsRepo.getSystemPaths();
+        const partitionLabels = await settingsRepo.getPartitionLabels();
+
+        // Apply custom labels to partitions
+        const enrichedPartitions = partitions.map(p => ({
+            ...p,
+            customLabel: partitionLabels[p.name] || null,
+            displayName: partitionLabels[p.name] || p.label || p.mountpoint
+        }));
         
         res.json({
             platform: os.platform(),
@@ -120,8 +129,31 @@ async function startServer() {
             pictures: path.resolve(ROOT, customPaths.pictures || 'Pictures'),
             videos: path.resolve(ROOT, customPaths.videos || 'Videos'),
             drives: drives,
+            partitions: enrichedPartitions,
             isConfigured: Object.keys(customPaths).length > 0
         });
+    });
+
+    app.get('/partitions', async (req, res) => {
+        const partitions = await fileRepo.getPartitions();
+        const partitionLabels = await settingsRepo.getPartitionLabels();
+        const enrichedPartitions = partitions.map(p => ({
+            ...p,
+            customLabel: partitionLabels[p.name] || null,
+            displayName: partitionLabels[p.name] || p.label || p.mountpoint
+        }));
+        res.json(enrichedPartitions);
+    });
+
+    app.post('/partitions/set-label', async (req, res) => {
+        try {
+            const { name, label } = req.body;
+            if (!name) return res.status(400).json({ error: 'Name is required' });
+            await settingsRepo.savePartitionLabel(name, label);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
     });
 
     app.post('/system-paths/configure', async (req, res) => {
